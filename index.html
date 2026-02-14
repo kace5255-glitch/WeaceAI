@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="https://lucide.dev/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>幻靈寫作AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            // == Discord Dark Theme ==
+            gray: {
+              50: '#f2f3f5',
+              100: '#e3e5e8',
+              200: '#c7ccd1',
+              300: '#b9bbbe',
+              400: '#8e9297',
+              500: '#72767d', // Subtext
+              600: '#4f545c',
+              700: '#40444b',
+              750: '#36393f', // Chat Background (Original Main)
+              800: '#36393f', // Main Panel
+              850: '#2f3136', // Sidebar / Members List
+              900: '#2f3136', // Use Sidebar Color for Main BG to be dark enough? No, usually Chat is lighter.
+              // Let's stick to Discord Structure: Sidebar Darker, Chat Lighter.
+              // But App often uses 900 for main. Let's make 900 the Chat BG #36393f?
+              // Actually, standard is: Server List (#202225) > Sidebar (#2f3136) > Chat (#36393f).
+              // Tailwind darker -> lighter numbers.
+              // So 950=#202225, 900=#2f3136, 800=#36393f.
+              900: '#36393f', // Main Background (Chat)
+              950: '#202225', // Deepest (Server List)
+            },
+            slate: {
+              50: '#f2f3f5', 100: '#e3e5e8', 200: '#c7ccd1', 300: '#b9bbbe', 400: '#8e9297',
+              500: '#72767d', 600: '#4f545c', 700: '#40444b', 750: '#36393f', 800: '#36393f',
+              850: '#2f3136', 900: '#36393f', 950: '#202225',
+            },
+            zinc: {
+              50: '#f2f3f5', 100: '#e3e5e8', 200: '#c7ccd1', 300: '#b9bbbe', 400: '#8e9297',
+              500: '#72767d', 600: '#4f545c', 700: '#40444b', 750: '#36393f', 800: '#36393f',
+              850: '#2f3136', 900: '#36393f', 950: '#202225',
+            },
+            neutral: {
+              50: '#f2f3f5', 100: '#e3e5e8', 200: '#c7ccd1', 300: '#b9bbbe', 400: '#8e9297',
+              500: '#72767d', 600: '#4f545c', 700: '#40444b', 750: '#36393f', 800: '#36393f',
+              850: '#2f3136', 900: '#36393f', 950: '#202225',
+            },
+
+            // == Discord Blurple (Brand) ==
+            violet: {
+              50: '#e0e2fc',
+              100: '#c2c6f9',
+              200: '#a3aaf6',
+              300: '#858df3',
+              400: '#6671f0',
+              500: '#5865F2', // Blurple
+              600: '#4752C4', // Hover
+              700: '#3c45a5',
+              800: '#323987',
+              900: '#272c68',
+              950: '#1d204a',
+            },
+            purple: {
+              50: '#e0e2fc', 100: '#c2c6f9', 200: '#a3aaf6', 300: '#858df3', 400: '#6671f0',
+              500: '#5865F2', 600: '#4752C4', 700: '#3c45a5', 800: '#323987', 900: '#272c68', 950: '#1d204a',
+            },
+            indigo: {
+              50: '#e0e2fc', 100: '#c2c6f9', 200: '#a3aaf6', 300: '#858df3', 400: '#6671f0',
+              500: '#5865F2', 600: '#4752C4', 700: '#3c45a5', 800: '#323987', 900: '#272c68', 950: '#1d204a',
+            },
+            blue: {
+              50: '#e0e2fc', 100: '#c2c6f9', 200: '#a3aaf6', 300: '#858df3', 400: '#6671f0',
+              500: '#5865F2', 600: '#4752C4', 700: '#3c45a5', 800: '#323987', 900: '#272c68', 950: '#1d204a',
+            },
+
+            // == Discord Semantic Colors ==
+            green: {
+              500: '#3BA55C', // Success
+              600: '#2D7D46',
+            },
+            red: {
+              500: '#ED4245', // Danger
+              600: '#C03537',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+
+    /* Custom scrollbar for cleaner look */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom": "https://esm.sh/react-dom@^19.2.4",
+    "react-dom/client": "https://esm.sh/react-dom@^19.2.4/client",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>
