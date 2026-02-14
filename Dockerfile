@@ -1,15 +1,18 @@
-# 使用完整的 Node.js 官方映像檔 (避免 slim 版本缺少工具)
+# 使用完整的 Node.js 官方映像檔
 FROM node:20 AS builder
 WORKDIR /app
 
-# 複製根目錄的依賴並安裝 (包含 Vite 等構建工具)
+# 強制設定為開發模式，確保 devDependencies (Vite) 被安裝
+ENV NODE_ENV=development
+
+# 複製依賴定義
 COPY package*.json ./
+# 安裝所有依賴 (包含 devDependencies)
 RUN npm install
 
-# 複製源碼並執行前端構建 (排除 node_modules)
+# 複製源碼
 COPY . .
-# 再次確保 node_modules乾淨
-RUN npm ci || npm install 
+# 執行構建
 RUN npm run build
 
 # --- 第二階段：運行環境 ---
