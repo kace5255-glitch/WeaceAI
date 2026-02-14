@@ -6,7 +6,10 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 8080; // Zeabur default is often 8080, fallback to 8080
+
+console.log(`Starting server with NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`Port detected: ${process.env.PORT} (using ${port})`);
 
 app.set('trust proxy', 1);
 app.use(cors());
@@ -30,7 +33,9 @@ app.use('/api/', limiter);
 
 const apiKey = process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY || process.env.API_KEY;
 if (!apiKey) {
-    console.error("CRITICAL: API Key not found in environment variables.");
+    console.warn("CRITICAL WARNING: GOOGLE_API_KEY not found. AI generation will fail.");
+} else {
+    console.log("GOOGLE_API_KEY found successfully.");
 }
 const { createClient } = require('@supabase/supabase-js');
 
