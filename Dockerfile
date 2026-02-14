@@ -2,13 +2,11 @@
 FROM node:20 AS builder
 WORKDIR /app
 
-# 強制設定為開發模式，確保 devDependencies (Vite) 被安裝
-ENV NODE_ENV=development
-
 # 複製依賴定義
 COPY package*.json ./
-# 安裝所有依賴 (包含 devDependencies)
-RUN npm install
+
+# 強制安裝開發依賴 (即使 Zeabur 預設注入了 NODE_ENV=production)
+RUN npm install --include=dev
 
 # 複製源碼
 COPY . .
