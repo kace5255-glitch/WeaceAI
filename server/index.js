@@ -1,7 +1,7 @@
-
 require('dotenv').config({ path: '../.env.local' });
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const rateLimit = require('express-rate-limit');
 
@@ -12,8 +12,13 @@ app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-    res.send('幻靈寫作AI Backend is running.');
+// Serve Static Files from Vite build
+const distPath = path.join(__dirname, '../dist');
+app.use(express.static(distPath));
+
+// API Root
+app.get('/api', (req, res) => {
+    res.json({ status: 'running', message: '幻靈寫作AI Backend is running.' });
 });
 
 const limiter = rateLimit({
@@ -32,7 +37,13 @@ const { createClient } = require('@supabase/supabase-js');
 // Initialize Supabase Client (Backend)
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+let supabase;
+if (supabaseUrl && supabaseAnonKey) {
+    supabase = createClient(supabaseUrl, supabaseAnonKey);
+} else {
+    console.warn("WARNING: Supabase URL or Anon Key missing. Auth features will fail.");
+}
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -401,9 +412,18 @@ app.post('/api/update-character', async (req, res) => {
     }
 });
 
+// SPA Fallback: All non-API routes serve index.html
+app.get('*', (req, res) => {
+    // Check if it's an API call or a file request
+    if (req.path.startsWith('/api')) return;
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+});
+
 const server = app.listen(port, () => {
     console.log(`Backend server listening at http://localhost:${port}`);
+    console.log(`Serving static files from: ${distPath}`);
 });
 
 // Increase timeout to 10 minutes (600000ms) for reasoning models
 server.setTimeout(600000);
+

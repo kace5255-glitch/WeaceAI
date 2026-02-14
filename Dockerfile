@@ -11,20 +11,20 @@ RUN npm run build
 
 # --- 第二階段：運行環境 ---
 FROM base AS runner
-# 複製後端程式碼
+# 先複製依賴定義
 COPY server/package*.json ./server/
+# 安裝依賴 (在 server 目錄下)
 RUN cd server && npm install --production
+# 再複製程式碼 (避免與 node_modules 衝突)
 COPY server/ ./server/
 
-# 複製前端構建好的靜態檔案 (供後端託管或單獨服務)
+# 複製前端構建好的靜態檔案
 COPY --from=frontend-builder /app/dist ./dist
 
 # 設定環境變數
 ENV NODE_ENV=production
-ENV PORT=3001
+# 移除強制 PORT，讓雲端平台決定
+# ENV PORT=3001 
 
-# 開放後端連接埠
-EXPOSE 3001
-
-# 啟動指令 (指向後端進入點)
+# 啟動指令 (從根目錄執行)
 CMD ["node", "server/index.js"]
