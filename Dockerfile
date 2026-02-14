@@ -6,8 +6,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# 複製源碼並執行前端構建
+# 複製源碼並執行前端構建 (排除 node_modules)
 COPY . .
+# 再次確保 node_modules乾淨
+RUN npm ci || npm install 
 RUN npm run build
 
 # --- 第二階段：運行環境 ---
