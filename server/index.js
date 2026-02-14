@@ -21,7 +21,7 @@ app.use(express.static(distPath));
 
 // API Root
 app.get('/api', (req, res) => {
-    res.json({ status: 'running', message: '幻靈寫作AI Backend is running.' });
+    res.json({ status: 'running', message: '幻靈寫作AI Backend v2 is running.' });
 });
 
 const limiter = rateLimit({
