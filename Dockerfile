@@ -1,28 +1,31 @@
-# 使用 Node.js 官方映像檔
-FROM node:20-slim AS base
+# 使用完整的 Node.js 官方映像檔 (避免 slim 版本缺少工具)
+FROM node:20 AS builder
 WORKDIR /app
 
-# --- 第一階段：構建前端 ---
-FROM base AS frontend-builder
+# 複製根目錄的依賴並安裝 (包含 Vite 等構建工具)
 COPY package*.json ./
 RUN npm install
+
+# 複製源碼並執行前端構建
 COPY . .
 RUN npm run build
 
 # --- 第二階段：運行環境 ---
-FROM base AS runner
-# 將所有檔案複製進來，確保路徑一致
+FROM node:20-slim AS runner
+WORKDIR /app
+
+# 複製構建好的前端檔案
+COPY --from=builder /app/dist ./dist
+
+# 複製全體檔案 (包含 server 資料夾)
 COPY . .
 
-# 安裝後端生產環境依賴
+# 安裝後端所需的生產環境依賴
 RUN cd server && npm install --production
-
-# 複製前端構建好的靜態檔案
-COPY --from=frontend-builder /app/dist ./dist
 
 # 設定環境變數
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# 啟動指令：從根目錄啟動 server/index.js
+# 啟動指令
 CMD ["node", "server/index.js"]
