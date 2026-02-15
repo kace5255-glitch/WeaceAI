@@ -124,83 +124,151 @@ const authenticateUser = async (req, res, next) => {
 app.use('/api/', authenticateUser);
 
 
-const buildPrompt = (params) => {
+// 建構 System Prompt — AI 的角色人設與寫作規範
+const buildSystemPrompt = (params) => {
+    const { settings } = params;
+    const defaultPersona = `你是一位擁有二十年經驗的頂尖華語小說家，精通敘事節奏、人物心理刻畫與場景構建。
+你的文風兼具文學性與可讀性，能讓讀者一旦開始閱讀就欲罷不能。
+你深諳「展示而非告知(Show, Don't Tell)」的敘事原則，善用衝突、懸念與情感張力驅動故事。`;
+    const systemPersona = settings.systemPersona && settings.systemPersona.trim() !== '' ? settings.systemPersona : defaultPersona;
+
+    return `${systemPersona}
+
+【你正在創作的小說】
+- 標題: 《${settings.title}》
+- 類型: ${settings.genre}
+- 風格: ${settings.style || "正統小說風格"}
+- 基調: ${settings.tone}
+${settings.worldview ? `
+【世界觀與背景設定】
+以下是這部小說的世界觀核心設定，你在寫作時必須嚴格遵守這些規則與設定，確保故事的一致性：
+${settings.worldview}
+` : ''}
+【專業寫作規範 — 核心創作引擎】
+
+★ 敘事技巧：
+1. 開頭即入戲 — 用衝突、懸念或強烈感官畫面開場，禁止平鋪直敘或概述
+2. 場景結構 — 每個場景遵循「觸發事件→衝突升級→轉折或懸念」的節奏
+3. 長短句交替 — 渲染氛圍時用長句鋪陳，緊張時用短句加速，營造呼吸感
+4. 伏筆藝術 — 適時埋下細節線索，為後續揭曉做鋪墊，增加重讀價值
+
+★ 角色塑造：
+5. Show Don't Tell — 用行動、對話、微表情、下意識動作展現性格，嚴禁「他是個善良的人」這類直述
+6. 角色弧光 — 角色每次出場都要有微妙的成長、動搖或變化
+7. 語言即性格 — 每個角色的語氣、用詞習慣、句式長短必須有鮮明辨識度
+8. 內心刻畫 — 在關鍵抉擇時展現角色的內心掙扎、矛盾與慾望
+
+★ 文學品質：
+9. 五感沉浸 — 視、聽、觸、嗅、味至少交叉運用兩種以上，構建立體場景
+10. 環境映射情緒 — 場景描寫必須反映或對比角色的內在情感（情景交融）
+11. 意象創新 — 運用新穎的比喻與意象，絕對避免「月光如水」「心如刀割」等陳腔濫調
+12. 留白與暗示 — 適度留白讓讀者自行想像，不要過度解釋角色情感或事件意義
+
+★ 成癮機制：
+13. 微懸念鉤子 — 每段落結尾留下一個小疑問或期待感，讓讀者想繼續讀
+14. 情感投資 — 讓讀者深度共情角色，為他們的命運揪心
+15. 衝突升級 — 隨著篇幅推進，衝突層次應逐步加深，不要早早化解張力
+
+★ 網文節奏控制：
+16. 避免劇情拖沓 — 若感覺節奏變慢，立即增加人物矛盾衝突，讓劇情跌宕起伏
+17. 爽點設置 — 適時安排打臉、裝逼、扮豬吃老虎、主角碾壓等經典網文橋段，給讀者爽感
+18. 對話直白 — 人物對話要符合性格，避免文縐縐的古言，讓話語直白、有力、接地氣
+19. 章節鉤子 — 每章結尾必須留下懸念或衝突高潮，讓讀者欲罷不能、忍不住點下一章
+20. 邏輯一致 — 嚴格把握劇情邏輯，前後設定不矛盾，人物行動符合性格與動機
+
+★ 格式規範：
+21. 直接輸出小說正文，不包含任何回覆語、解釋、元資訊或「以下是...」等開場白
+22. 絕對不要在開頭重複章節標題、章節號碼或任何 Markdown 標題（如 # 第一章）
+23. 使用正確的中文標點：「」用於對話、——用作破折號、……用作省略號，禁止使用英文標點`;
+};
+
+// 建構 User Prompt — 具體的寫作任務與上下文
+const buildUserPrompt = (params) => {
     const { chapter, characters, vocabularies, settings, instructions, requirements, relations, previousContext } = params;
+
     const characterContext = characters && characters.length > 0
         ? characters.map(c => `> **${c.name}** (${c.gender === 'male' ? '男' : c.gender === 'female' ? '女' : '其他'} | ${c.role})
      - 性格特徵: ${c.traits}
      - 當前狀態: ${c.status}
      - 等級/能力: ${c.level || '未知'}`).join('\n')
         : "無特定登場角色，請根據上下文自由發揮。";
+
     const vocabContext = vocabularies && vocabularies.length > 0
         ? vocabularies.map(v => `> **${v.name}** [${v.category}]: ${v.description}`).join('\n')
         : "無特定詞條";
-    const previousContentText = chapter.content ? chapter.content.slice(-4000) : "(本章尚未有內容，這是開頭)";
-    const defaultPersona = "你是一位擁有豐富想像力和精湛文筆的資深小說家。你的任務是根據提供的設定與大綱，撰寫或續寫精彩的小說正文。";
-    const systemPersona = settings.systemPersona && settings.systemPersona.trim() !== '' ? settings.systemPersona : defaultPersona;
 
-    return `
-      【角色扮演指令 (System Persona)】
-      ${systemPersona}
-      【小說核心設定】
-      - 標題: 《${settings.title}》
-      - 類型: ${settings.genre}
-      - 風格 (Style): ${settings.style || "正統小說風格"}
-      - 基調 (Tone): ${settings.tone}
-      【本章環境與場景氛圍 (Environment)】
-      ${settings.background || "請根據劇情自動構建場景，注重氛圍渲染。"}
-      【登場角色檔案 (Characters)】
-      請務必還原角色的性格、說話語氣與行為邏輯：
-      ${characterContext}
-      【相關專有名詞 (Vocabulary)】
-      請在行文中自然融入以下設定，不要生硬解釋：
-      ${vocabContext}
-      【歷史章節回顧 (Memory / Story So Far)】
-      以下是之前章節的劇情摘要，請確保新寫的內容與前文邏輯連貫：
-      ${previousContext || "無前情提要。"}
-      【特殊指令 / 角色關係變動】
-      ${relations || "無特殊變動"}
-      【當前章節資訊】
-      - 章節標題: ${chapter.title}
-      - 本章當前已寫內容 (Context):
-      ${previousContentText}
-      【本次寫作任務：劇情大綱 (Outline)】
-      請根據以下指示發展劇情，將大綱轉化為具體的文學描寫：
-      ${instructions}
-      【寫作具體要求 (Requirements)】
-      請嚴格遵守以下寫作指導：
-      ${requirements || "無特殊要求，請保持流暢。"}
-      【撰寫要求】
-      1. **沈浸感**: 多運用感官描寫來構建場景。
-      2. **角色驅動**: 透過對話和行動推動劇情。
-      3. **邏輯性**: 符合行為設定。
-      4. **輸出格式**: 直接輸出小說正文，不包含回覆語。
-      5. **禁止事項**: **絕對不要**在開頭重複章節標題、章節號碼或任何 Markdown 標題 (如 # 第一章)。直接從正文段落開始寫。
-    `;
+    const previousContentText = chapter.content ? chapter.content.slice(-6000) : "(本章尚未有內容，這是開頭)";
+
+    return `【本章環境與場景氛圍】
+${settings.background || "請根據劇情自動構建場景，注重氛圍渲染與情景交融。"}
+
+【登場角色檔案】
+請務必還原角色的性格、說話語氣與行為邏輯，讓每個人物「活」起來：
+${characterContext}
+
+【相關專有名詞與世界觀設定】
+在行文中自然融入以下設定，讓讀者在不知不覺中理解世界觀，禁止生硬的百科式解釋：
+${vocabContext}
+
+【前情回顧 — 劇情記憶】
+以下是之前章節的劇情摘要，請確保新寫的內容與前文邏輯連貫、情感延續：
+${previousContext || "無前情提要。"}
+
+【特殊指令 / 角色關係變動】
+${relations || "無特殊變動"}
+
+【當前章節：${chapter.title}】
+已寫內容（請從此處自然銜接）：
+${previousContentText}
+
+【本次寫作任務】
+${instructions}
+
+【額外寫作要求】
+${requirements || "無特殊要求，請保持流暢自然的敘事節奏。"}`;
+};
+
+// 向後兼容：合併版 prompt（用於不支援 system 角色的場景）
+const buildPrompt = (params) => {
+    return buildSystemPrompt(params) + '\n\n---\n\n' + buildUserPrompt(params);
 };
 
 const getGoogleModelName = (modelSelection) => {
     const m = (modelSelection || '').toLowerCase();
-    if (m.includes('pro')) return 'gemini-2.0-pro-exp-02-05';
-    return 'gemini-2.0-flash';
+    if (m.includes('pro')) return 'gemini-2.5-pro-preview-06-05';
+    if (m.includes('2.5')) return 'gemini-2.5-flash';
+    return 'gemini-2.5-flash';
 };
 
 app.post('/api/generate', async (req, res) => {
     try {
-        const { model: modelSelection } = req.body;
-        const prompt = buildPrompt(req.body);
+        const { model: modelSelection, temperature: reqTemperature } = req.body;
+        const systemPrompt = buildSystemPrompt(req.body);
+        const userPrompt = buildUserPrompt(req.body);
+        const combinedPrompt = buildPrompt(req.body);
+        const temperature = typeof reqTemperature === 'number' ? reqTemperature : 0.9;
         let content = "";
 
         if (modelSelection.startsWith('Google')) {
-            const googleModel = genAI.getGenerativeModel({ model: getGoogleModelName(modelSelection) });
-            const result = await googleModel.generateContent(prompt);
+            const googleModel = genAI.getGenerativeModel({
+                model: getGoogleModelName(modelSelection),
+                systemInstruction: systemPrompt
+            });
+            const result = await googleModel.generateContent({
+                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+                generationConfig: { temperature: temperature }
+            });
             content = result.response.text();
         } else if (modelSelection === 'DeepSeek R1' || modelSelection === 'DeepSeek V3.2') {
             if (!deepseek) throw new Error("DeepSeek API Key not configured.");
             const dsModel = modelSelection === 'DeepSeek R1' ? 'deepseek-reasoner' : 'deepseek-chat';
+            const messages = dsModel === 'deepseek-reasoner'
+                ? [{ role: "user", content: combinedPrompt }]
+                : [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }];
             const response = await deepseek.chat.completions.create({
                 model: dsModel,
-                messages: [{ role: "user", content: prompt }]
+                messages: messages,
+                temperature: dsModel === 'deepseek-reasoner' ? undefined : temperature
             });
             content = response.choices[0].message.content;
         } else if (modelSelection.startsWith('Qwen')) {
@@ -208,22 +276,28 @@ app.post('/api/generate', async (req, res) => {
             const qModel = modelSelection.includes('Max') ? 'qwen-max' : 'qwen-plus';
             const response = await qwen.chat.completions.create({
                 model: qModel,
-                messages: [{ role: "user", content: prompt }]
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: temperature
             });
             content = response.choices[0].message.content;
         } else if (modelSelection === 'Kimi') {
             if (!kimi) throw new Error("Kimi API Key not configured.");
             const response = await kimi.chat.completions.create({
                 model: 'moonshot-v1-8k',
-                messages: [{ role: "user", content: prompt }]
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: temperature
             });
             content = response.choices[0].message.content;
         } else if (modelSelection.startsWith('OpenRouter')) {
             if (!openRouter) throw new Error("OpenRouter API Key not configured.");
 
-            let orModel = 'anthropic/claude-4.5-sonnet'; // Default fallback to latest Sonnet
-
-            // Map user selections to OpenRouter IDs
+            let orModel = 'anthropic/claude-4.5-sonnet';
             if (modelSelection.includes('Opus 4.6')) {
                 orModel = 'anthropic/claude-opus-4.6';
             } else if (modelSelection.includes('Sonnet 4.5')) {
@@ -232,7 +306,11 @@ app.post('/api/generate', async (req, res) => {
 
             const response = await openRouter.chat.completions.create({
                 model: orModel,
-                messages: [{ role: "user", content: prompt }]
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: temperature
             });
             content = response.choices[0].message.content;
         } else {
@@ -246,10 +324,186 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
+// ═══ 世界觀生成端點 ═══
+app.post('/api/worldview', async (req, res) => {
+    try {
+        const { prompt, model: modelSelection = 'Google Flash' } = req.body;
+        if (!prompt || !prompt.trim()) {
+            return res.status(400).json({ error: '請提供世界觀描述提示' });
+        }
+
+        const systemPrompt = `你是一位專業的小說世界觀架構師。請根據用戶的描述，生成一份結構完整、詳細的世界觀設定文件。
+
+請使用以下結構組織內容（使用純文字格式，用 emoji 作為區段標題）：
+
+🌍 世界背景
+（世界的基本架構、時代背景、核心概念）
+
+⚔️ 力量體系
+（修煉/魔法/科技體系、等級劃分、突破條件）
+
+🏰 勢力分佈
+（主要門派/國家/組織、勢力關係、政治格局）
+
+👥 種族與物種
+（主要種族、特殊生物、種族特性）
+
+📜 歷史大事件
+（重要歷史節點、影響深遠的事件）
+
+🔮 特殊規則
+（世界獨特的運行規則、禁忌、天道法則）
+
+📍 重要地點
+（關鍵地理、標誌性場所）
+
+要求：
+1. 內容豐富且具有內在邏輯一致性
+2. 每個區段 3-5 個要點
+3. 使用繁體中文
+4. 總字數控制在 800-1500 字`;
+
+        const userPrompt = `請根據以下描述生成世界觀設定：\n\n${prompt}`;
+        let content = '';
+        const temperature = 0.8;
+
+        if (modelSelection.startsWith('Google') || modelSelection.startsWith('Gemini')) {
+            const googleModel = genAI.getGenerativeModel({
+                model: getGoogleModelName(modelSelection),
+                systemInstruction: systemPrompt
+            });
+            const result = await googleModel.generateContent({
+                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+                generationConfig: { temperature }
+            });
+            content = result.response.text();
+        } else if (modelSelection.startsWith('DeepSeek')) {
+            if (!deepseek) throw new Error("DeepSeek API Key not configured.");
+            const response = await deepseek.chat.completions.create({
+                model: 'deepseek-chat',
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature
+            });
+            content = response.choices[0].message.content;
+        } else if (modelSelection === 'Kimi') {
+            if (!kimi) throw new Error("Kimi API Key not configured.");
+            const response = await kimi.chat.completions.create({
+                model: 'moonshot-v1-8k',
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature
+            });
+            content = response.choices[0].message.content;
+        } else if (modelSelection === 'Claude Sonnet') {
+            if (!openRouter) throw new Error("OpenRouter API Key not configured.");
+            const response = await openRouter.chat.completions.create({
+                model: 'anthropic/claude-sonnet-4',
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature
+            });
+            content = response.choices[0].message.content;
+        } else if (modelSelection === 'GPT-4o') {
+            if (!openRouter) throw new Error("OpenRouter API Key not configured.");
+            const response = await openRouter.chat.completions.create({
+                model: 'openai/gpt-4o',
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature
+            });
+            content = response.choices[0].message.content;
+        } else {
+            // 預設用 Google Flash
+            const googleModel = genAI.getGenerativeModel({
+                model: 'gemini-2.5-flash',
+                systemInstruction: systemPrompt
+            });
+            const result = await googleModel.generateContent({
+                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+                generationConfig: { temperature }
+            });
+            content = result.response.text();
+        }
+
+        res.json({ content });
+    } catch (error) {
+        console.error("Worldview Generation Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.post('/api/outline', async (req, res) => {
     try {
-        const { chapter, settings, model: modelSelection } = req.body;
-        const prompt = `為小說《${settings.title}》章節 ${chapter.title} 生成大綱。`;
+        const { chapter, characters, settings, previousContext, model: modelSelection } = req.body;
+
+        const characterList = characters && characters.length > 0
+            ? characters.map(c => `- ${c.name} (${c.role}): ${c.traits} | 狀態: ${c.status}`).join('\n')
+            : "無特定角色";
+
+        const prompt = `你是一位資深網文結構顧問，擅長規劃能讓讀者欲罷不能的章節結構。請為小說《${settings.title}》的章節《${chapter.title}》生成一份專業的章節大綱。
+
+【小說類型】${settings.genre}
+【風格基調】${settings.style || "正統小說風格"} / ${settings.tone}
+
+【登場角色】
+${characterList}
+
+【前文摘要】
+${previousContext || "這是第一章，沒有前文。"}
+
+【本章已有內容】
+${chapter.content ? chapter.content.slice(-2000) : "(尚無內容)"}
+
+【生成要求】
+請生成一份結構化的網文章節大綱，包含：
+
+1. **核心衝突** 
+   - 本章的主要矛盾或張力是什麼？
+   - 衝突如何逐步升級？
+
+2. **爽點規劃** ⭐ 
+   - 本章安排哪些爽點？（打臉、裝逼、扮豬吃老虎、碾壓、反殺、翻盤等）
+   - 爽點出現的時機和方式
+   - 預期讀者爽感程度
+
+3. **場景列表** 
+   按順序列出 3-5 個場景，每個場景包含：
+   - 場景地點與氛圍
+   - 參與角色
+   - 關鍵事件與轉折
+   - 情緒基調
+   - 此場景的功能（鋪墊/衝突/高潮/緩和）
+
+4. **角色塑造** 
+   - 主角在本章的表現（性格展現、能力展示）
+   - 配角如何烘托主角
+   - 角色關係變動
+
+5. **懸念鉤子** ⭐
+   - 章節開頭如何抓住讀者？
+   - 章末留給讀者什麼懸念？
+   - 讓讀者非點下一章不可的理由
+
+6. **伏筆建議** 
+   - 可以在本章埋下的伏筆
+   - 為後續劇情做的鋪墊
+
+7. **節奏控制**
+   - 本章預計字數與節奏分配
+   - 哪裡加快節奏（短句、衝突）
+   - 哪裡放慢節奏（描寫、鋪墊）
+
+請使用簡潔有力的語句，直接輸出大綱內容，不要加額外說明。使用繁體中文。`;
+
         const model = genAI.getGenerativeModel({ model: getGoogleModelName(modelSelection) });
         const result = await model.generateContent(prompt);
         res.json({ content: result.response.text() });
@@ -288,7 +542,8 @@ app.post('/api/character', async (req, res) => {
                 ],
                 response_format: { type: 'json_object' }
             });
-            resultData = JSON.parse(response.choices[0].message.content);
+            const raw = response.choices[0].message.content;
+            resultData = JSON.parse(raw.replace(/```json\n?|```/g, '').trim());
         } else if (modelSelection.startsWith('Google')) {
             const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
             const prompt = `根據描述創建角色卡JSON: ${description}`;
@@ -343,28 +598,106 @@ app.post('/api/briefing', async (req, res) => {
 
 app.post('/api/critique', async (req, res) => {
     try {
-        const { chapter, settings } = req.body;
+        const { chapter, settings, characters, vocabularies } = req.body;
 
         if (!deepseek) {
             throw new Error("DeepSeek API Key not configured.");
         }
 
-        const prompt = `請對小說《${settings.title}》的章節《${chapter.title}》進行深度點評（Critique）。
-        章節內容如下：
-        ${chapter.content}
-        
-        撰寫要求：
-        1. 從敘事節奏、角色動機、氛圍渲染三個維度分析。
-        2. 點出寫得精彩的地方，以及建議修改或強化的細節。
-        3. 提供一小段建議的風格修正方案。
-        4. 使用繁體中文。`;
+        const characterInfo = characters && characters.length > 0
+            ? `\n【登場角色】\n${characters.map(c => `${c.name}（${c.role}）：${c.traits}`).join('\n')}`
+            : '';
+
+        const prompt = `你是一位資深網文編輯，擁有十年以上的網文審稿經驗。請對小說《${settings.title}》的章節《${chapter.title}》進行專業點評。
+
+【小說類型】${settings.genre}
+【風格基調】${settings.style || '正統小說'} / ${settings.tone}${characterInfo}
+
+【章節內容】
+${chapter.content}
+
+請從以下維度進行專業點評：
+
+═══ 一、網文基礎檢查 ═══
+
+1. **劇情節奏**
+   - 本章節奏是否流暢？有無拖沓或過於倉促的地方？
+   - 矛盾衝突密度是否足夠？衝突是否有效推動劇情發展？
+   - 評分（1-10）：___
+
+2. **爽點設計**
+   - 有無經典網文爽點（打臉、裝逼、扮豬吃老虎、碾壓、翻盤等）？
+   - 爽點設置是否自然？讀者爽感是否足夠？
+   - 評分（1-10）：___
+
+3. **懸念鉤子**
+   - 章節開頭是否吸引人？能否激發讀者繼續閱讀的慾望？
+   - 章節結尾是否留下懸念或衝突高潮？
+   - 評分（1-10）：___
+
+4. **對話質量**
+   - 人物對話是否自然、直白、有力？
+   - 對話是否符合角色性格？有無文縐縐或生硬之處？
+   - 評分（1-10）：___
+
+5. **水文檢測**
+   - 有無無意義的字數堆砌或重複描寫？
+   - 每一句話是否都在推動劇情或塑造角色？
+   - 評分（1-10）：___
+
+═══ 二、人物塑造 ═══
+
+6. **主角形象**
+   - 主角是否有立體感？有無接地氣的特點？
+   - 主角行為是否符合邏輯和動機？
+   - 建議：___
+
+7. **配角功能**
+   - 配角是否有效烘托主角？
+   - 配角是否僅為功能性存在，缺乏生動性？
+   - 建議：___
+
+═══ 三、場景與細節 ═══
+
+8. **場景真實感**
+   - 場景描寫是否具體可感？讀者能否在腦海中構建畫面？
+   - 建議：___
+
+9. **設定融入**
+   - 世界觀設定、專有名詞是否自然融入劇情？
+   - 有無生硬的說教式解釋？
+   - 建議：___
+
+═══ 四、商業價值評估 ═══
+
+10. **付費意願**
+    - 作為讀者，你願意為這一章付費嗎？（願意/勉強/不願意）
+    - 原因：___
+
+11. **讀者黏性**
+    - 讀者看完本章後，會想立即看下一章嗎？
+    - 本章的吸引力主要來自哪裡？
+
+═══ 五、具體修改建議 ═══
+
+請針對本章最需要改進的 3 個問題，給出具體的修改建議（可包含示例）。
+
+═══ 六、總體評價 ═══
+
+- 本章亮點：___
+- 主要問題：___
+- 總體評分（1-10）：___
+- 一句話總結：___
+
+請使用繁體中文，保持專業但不失犀利的評論風格。`;
 
         const response = await deepseek.chat.completions.create({
             model: "deepseek-reasoner",
             messages: [
-                { role: "system", content: "你是一位毒舌但專業的小說評論家，你的點評能直指核心並提供具體改善建議。" },
+                { role: "system", content: "你是一位資深網文編輯，擁有十年審稿經驗。你的點評專業、犀利、實用，能夠直指問題核心並提供可執行的改進方案。你深諳網文讀者心理，知道什麼樣的內容能讓讀者付費追更。" },
                 { role: "user", content: prompt }
-            ]
+            ],
+            temperature: 0.7
         });
 
         res.json({ content: response.choices[0].message.content });
@@ -409,7 +742,9 @@ app.post('/api/update-character', async (req, res) => {
             response_format: { type: 'json_object' }
         });
 
-        const result = JSON.parse(response.choices[0].message.content);
+        const raw = response.choices[0].message.content;
+        console.log("Raw Update Char Output:", raw);
+        const result = JSON.parse(raw.replace(/```json\n?|```/g, '').trim());
         res.json(result);
     } catch (error) {
         console.error("Update Character AI Error:", error);
@@ -417,7 +752,71 @@ app.post('/api/update-character', async (req, res) => {
     }
 });
 
+
+
 // SPA Fallback: All non-API routes serve index.html
+// AI 輔助修改：根據點評建議生成改進版本
+// AI 問題定位：根據點評建議找出問題段落
+app.post('/api/locate-issues', async (req, res) => {
+    try {
+        const { suggestion, chapterContent, settings } = req.body;
+
+        if (!suggestion || !chapterContent) {
+            return res.status(400).json({ error: "Missing suggestion or chapter content" });
+        }
+
+        if (!deepseek) {
+            throw new Error("DeepSeek API Key not configured.");
+        }
+
+        // 構建定位提示詞
+        const prompt = `你是專業的小說編輯。請根據以下點評建議，在章節內容中找出具體的問題段落。
+
+【小說信息】
+- 標題：《${settings.title}》
+- 類型：${settings.genre}
+
+【點評建議】
+${suggestion}
+
+【章節內容】
+${chapterContent}
+
+【任務要求】
+1. 請在章節中找出 1-3 個最符合該建議的問題段落。
+2. 引用原文必須**完全精確**，與章節內容一字不差（不要省略或修改），以便我在前端進行匹配。
+3. 簡要說明為什麼這段落需要修改。
+4. 嚴格以 JSON 格式返回，格式如下：
+{
+  "issues": [
+    {
+      "quote": "原文段落（必須精確匹配）",
+      "reason": "問題說明（簡短有力）"
+    }
+  ]
+}
+5. 使用繁體中文。`;
+
+        const response = await deepseek.chat.completions.create({
+            model: "deepseek-chat", // Or reasoner if needed, but chat should be enough for extraction
+            messages: [
+                { role: "system", content: "你是一位精準的文本分析師，擅長定位小說中的問題段落。請只返回 JSON。" },
+                { role: "user", content: prompt }
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.3 // Lower temperature for precision quoting
+        });
+
+        const raw = response.choices[0].message.content;
+        const result = JSON.parse(raw.replace(/```json\n?|```/g, '').trim());
+        res.json(result);
+
+    } catch (error) {
+        console.error("AI Locate Issues Error:", error);
+        res.status(500).json({ error: error.message || "定位問題時發生錯誤" });
+    }
+});
+
 app.get('*', (req, res) => {
     // Check if it's an API call or a file request
     if (req.path.startsWith('/api')) return;

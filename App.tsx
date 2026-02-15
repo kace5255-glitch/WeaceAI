@@ -6,9 +6,11 @@ import { AssistantPanel } from './components/AssistantPanel';
 import { AiReviewModal } from './components/AiReviewModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { ChapterReviewModal } from './components/ChapterReviewModal';
+import { WorldviewModal } from './components/WorldviewModal';
+import { NovelSettingsModal } from './components/NovelSettingsModal';
 import { AuthPage } from './components/AuthPage';
 import { supabase } from './lib/supabase';
-import { generateStoryContent, generateOutline, generateCharacterProfile, generateChapterBriefing, generateCritique } from './services/geminiService';
+import { generateStoryContent, generateOutline, generateCharacterProfile, generateChapterBriefing, generateCritique, generateWorldview } from './services/geminiService';
 import { Chapter, Character, NovelSettings, Volume, Vocabulary, AIRequestParams, EditorActionType } from './types';
 import { Session } from '@supabase/supabase-js';
 import { useNovelData } from './hooks/useNovelData';
@@ -57,12 +59,17 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const root = window.document.documentElement;
+    // 在切換前啟用全域過渡，確保所有元素同步變色
+    root.classList.add('theme-transitioning');
     if (theme === 'dark') {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
+    // 過渡結束後移除，避免干擾 hover/focus 等互動動畫
+    const timer = setTimeout(() => root.classList.remove('theme-transitioning'), 250);
+    return () => clearTimeout(timer);
   }, [theme]);
 
   const toggleTheme = () => {
@@ -76,7 +83,8 @@ const App: React.FC = () => {
     volumes, updateVolumeTitle, addVolume, deleteVolume,
     addChapter, updateChapter, deleteChapter,
     characters, addCharacter, updateCharacter, deleteCharacter,
-    vocabularies, addVocabulary, updateVocabulary, deleteVocabulary
+    vocabularies, addVocabulary, updateVocabulary, deleteVocabulary,
+    importData
   } = useNovelData(session);
 
   const [currentChapterId, setCurrentChapterId] = useState<string>('1');
@@ -150,6 +158,10 @@ const App: React.FC = () => {
   const closeConfirmModal = () => {
     setConfirmModal(prev => ({ ...prev, isOpen: false }));
   };
+
+  // Worldview Modal State
+  const [isWorldviewOpen, setIsWorldviewOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Derived state: Find current chapter object
   const currentChapter = useMemo(() => {
@@ -308,15 +320,49 @@ const App: React.FC = () => {
     }
   };
 
-  const performCritiqueGeneration = async () => {
+  const performCritiqueGeneration = async (forceRegenerate = false) => {
     if (!currentChapter) return;
     if (!currentChapter.content || currentChapter.content.length < 50) {
       alert("章節內容過少，無法生成點評。");
       return;
     }
+
+    // 檢查是否已有點評且內容未變更
+    if (!forceRegenerate && currentChapter.critique) {
+      const { hasContentChanged } = await import('./utils/contentHash');
+      const contentChanged = hasContentChanged(
+        currentChapter.content,
+        currentChapter.contentHash
+      );
+      
+      if (!contentChanged) {
+        // 直接使用已保存的點評
+        setReviewContent(currentChapter.critique);
+        setReviewTitle('AI 文章點評');
+        setReviewAction('critique');
+        setIsReviewModalOpen(true);
+        return;
+      } else {
+        // 內容已變更，提示用戶
+        const shouldRegenerate = confirm(
+          "檢測到章節內容已修改，是否重新生成點評？\n點擊「取消」將顯示舊的點評內容。"
+        );
+        if (!shouldRegenerate) {
+          setReviewContent(currentChapter.critique);
+          setReviewTitle('AI 文章點評');
+          setReviewAction('critique');
+          setIsReviewModalOpen(true);
+          return;
+        }
+      }
+    }
+
+    // 生成新點評
     setIsReviewLoading(true);
     setReviewTitle('AI 文章點評');
     setReviewAction('critique');
+    setIsReviewModalOpen(true);
+    
     try {
       const params: AIRequestParams = {
         chapter: currentChapter,
@@ -332,6 +378,16 @@ const App: React.FC = () => {
       };
       const critique = await generateCritique(params);
       setReviewContent(critique);
+      
+      // 保存點評到數據庫
+      const { generateContentHash } = await import('./utils/contentHash');
+      const newHash = generateContentHash(currentChapter.content);
+      await updateChapter(currentChapter.id, {
+        critique: critique,
+        critiqueGeneratedAt: new Date(),
+        contentHash: newHash
+      });
+      
     } catch (e: any) {
       setReviewContent(getFriendlyErrorMessage(e));
     } finally {
@@ -379,7 +435,7 @@ const App: React.FC = () => {
       settings: settings,
       instructions: "",
       requirements: "",
-      model: "Gemini 2.5",
+      model: "Google Flash",
       relations: "",
       previousContext: toolbarContext,
       temperature: 0.9
@@ -402,19 +458,57 @@ const App: React.FC = () => {
 
     switch (action) {
       case 'continue':
-        params.instructions = "請根據上文，繼續撰寫接下來的劇情發展，約300-500字。";
+        params.instructions = `請根據上文的敘事節奏、角色情感走向和場景氛圍，自然地延續劇情。
+
+要求：
+- 保持與上文一致的人稱視角和時態
+- 銜接上文的情緒基調，不要突兀地轉換氛圍
+- 至少包含一個微懸念或轉折，讓讀者想繼續讀
+- 如有對話，確保每個角色的語氣與性格一致
+- 運用感官描寫（至少兩種感官）構建場景
+- 約 500-800 字，以一個自然的段落結尾`;
         break;
       case 'expand':
-        params.instructions = "請針對上文中最後一個場景進行「擴寫」，增加感官描寫、環境細節與心理活動，使其更具沉浸感。";
+        params.instructions = `請針對上文中最後一個場景進行深度擴寫，使其更具文學性和沉浸感。
+
+擴寫方向：
+- 增加五感描寫：視覺色彩、聽覺音效、觸覺質感、嗅覺氣味
+- 深化心理描寫：角色面對當前情境的內心波動、猶豫、慾望
+- 豐富環境細節：天氣、光影、物件擺設等與情感映射的環境描寫
+- 強化動作分解：將關鍵動作拆分為更細膩的連續動作，增加畫面感
+- 保持敘事節奏不被拖慢，擴寫應增加深度而非冗長`;
         break;
       case 'split':
-        params.instructions = "請對本文進行「拆書」分析。1. 分析敘事節奏(Beat)。2. 標出關鍵情節點。3. 建議的分段點。";
+        params.instructions = `請對本章內容進行專業的「拆書」結構分析。
+
+分析項目：
+1. **敘事節奏分析 (Story Beats)** — 列出每個關鍵情節節點，標注其功能（鋪墊/衝突/高潮/緩和）
+2. **張力曲線** — 描述全章的情緒張力走向，標出高峰和低谷
+3. **場景轉換點** — 標出適合分段或分場景的位置
+4. **節奏問題診斷** — 指出拖沓或過於倉促的段落
+5. **改善建議** — 提供具體的結構調整方案`;
         break;
       case 'fix':
-        params.instructions = "請擔任校對編輯，檢查本文的錯別字、語病與邏輯矛盾。請列出修改建議，並提供一段修改後的版本。";
+        params.instructions = `請擔任資深編輯，對本文進行全面的文字品質檢查。
+
+檢查項目：
+1. **語言錯誤** — 錯別字、語病、贅詞、用詞不當
+2. **邏輯矛盾** — 時間線、人物位置、因果關係是否一致
+3. **角色一致性** — 對話語氣與角色設定是否匹配
+4. **標點符號** — 是否正確使用中文標點（「」對話、——破折號、……省略號）
+5. **修改建議** — 每個問題都給出具體的修改方案
+
+請先列出問題清單，再提供修改後的完整版本。`;
         break;
       case 'humanize':
-        params.instructions = "請將本文內容進行「擬人化」潤飾。運用更自然且多變的句式，模擬人類作家的筆觸，以增加情感深度與不完美的真實感。請重寫上文的最後一段或相關部分。";
+        params.instructions = `請對上文最後 2-3 段進行「文學潤飾」，提升至專業小說水準。
+
+潤飾重點：
+- 消除 AI 痕跡：去除過於工整對稱的句式、公式化的轉折詞（然而/但是/與此同時）
+- 增加人類作家的不完美美感：偶爾的口語化、省略、跳躍式聯想
+- 強化文學性：運用新穎比喻、通感手法、意識流片段
+- 豐富節奏變化：打破均勻的句式長度，製造自然的閱讀呼吸感
+- 保留核心劇情不變，只提升文字品質`;
         break;
       default:
         return;
@@ -510,7 +604,7 @@ const App: React.FC = () => {
   const safeChapter = currentChapter || { id: 'dummy', title: '', content: '', outline: '', lastModified: 0 };
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900 text-slate-800 dark:text-gray-100 font-sans overflow-hidden relative transition-colors duration-200">
+    <div className="flex h-full bg-white dark:bg-gray-900 text-slate-800 dark:text-gray-100 font-sans overflow-hidden relative transition-colors duration-200">
       <Sidebar
         theme={theme}
         toggleTheme={toggleTheme}
@@ -559,9 +653,11 @@ const App: React.FC = () => {
         userEmail={session?.user?.email}
         userRole={userRole}
         onLogout={() => supabase.auth.signOut()}
+        onOpenWorldview={() => setIsWorldviewOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      <main className="flex-1 flex overflow-hidden relative">
+      <main className="flex-1 flex relative">
         {currentChapter ? (
           <Editor
             chapter={currentChapter}
@@ -590,6 +686,7 @@ const App: React.FC = () => {
           onDeleteVocabulary={deleteVocabulary}
           onGenerate={handleGenerate}
           onStopGeneration={handleStopGeneration}
+          onImportData={importData}
         />
       </main>
 
@@ -616,13 +713,38 @@ const App: React.FC = () => {
         content={reviewContent}
         isLoading={isReviewLoading}
         onClose={() => setIsReviewModalOpen(false)}
-        onRegenerate={() => {
+        onRegenerate={(force = false) => {
           if (reviewAction === 'critique') {
-            performCritiqueGeneration();
+            performCritiqueGeneration(force);
           } else {
             performBriefingGeneration();
           }
         }}
+        displayMode={reviewAction === 'critique' ? 'structured' : 'plain'}
+        editableContent={currentChapter?.content || ''}
+        onContentChange={(newContent) => {
+          if (currentChapter) {
+            updateChapter(currentChapter.id, { content: newContent });
+          }
+        }}
+        chapterTitle={currentChapter?.title || ''}
+        settings={settings}
+      />
+
+      {/* Worldview Modal */}
+      <WorldviewModal
+        isOpen={isWorldviewOpen}
+        onClose={() => setIsWorldviewOpen(false)}
+        settings={settings}
+        onUpdateSettings={updateSettings}
+        onGenerateWorldview={generateWorldview}
+      />
+
+      <NovelSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={updateSettings}
       />
 
       {/* Confirmation Modal */}

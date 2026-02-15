@@ -25,7 +25,7 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
     const lastChapterId = useRef(chapter.id);
 
     // Sync external changes (e.g. from Sidebar switching chapters or AI generation) to history
-    useEffect(() => {
+    React.useLayoutEffect(() => {
         // 1. Chapter Switch detected
         if (chapter.id !== lastChapterId.current) {
             setHistory([chapter.content]);
@@ -50,15 +50,34 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
             }
         }
 
-        // Reset flag after processing
-        isInternalChange.current = false;
+        // 3. Window resize handling
+        const handleResize = () => {
+            requestAnimationFrame(() => adjustHeight());
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [chapter.content, chapter.id]);
+
+    // CRITICAL: Always adjust height when content changes or on initial mount
+    // The above useLayoutEffect may skip adjustHeight when conditions don't match
+    // (e.g., initial load where chapter.id matches and content matches history[0])
+    useEffect(() => {
+        // Use requestAnimationFrame to ensure DOM is ready
+        const rafId = requestAnimationFrame(() => {
+            adjustHeight();
+        });
+        return () => cancelAnimationFrame(rafId);
     }, [chapter.content, chapter.id]);
 
     const adjustHeight = () => {
-        if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-            // Add extra buffer to prevent last line clipping
-            textareaRef.current.style.height = (textareaRef.current.scrollHeight + 24) + 'px';
+        const textarea = textareaRef.current;
+        if (textarea) {
+            // Reset height to allow precise scrollHeight measurement (handling shrinking too)
+            textarea.style.height = '0px';
+            const scrollHeight = textarea.scrollHeight;
+
+            // Set new height with generous buffer to prevent clipping (100px buffer)
+            textarea.style.height = (scrollHeight + 100) + 'px';
         }
     };
 
@@ -79,7 +98,8 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
         setHistory(newHistory);
         setHistoryIndex(newHistory.length - 1);
 
-        adjustHeight();
+        // Adjust height with animation frame for smoother update
+        requestAnimationFrame(() => adjustHeight());
     };
 
     // -- Text Manipulation Helpers --
@@ -159,7 +179,7 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
                     <span className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[120px] md:max-w-[200px] flex items-center gap-2" title={chapter.title}>
                         {chapter.title || '未命名'}
                     </span>
-                    <div className="hidden md:flex items-center gap-1.5 text-xs font-mono text-gray-400 dark:text-gray-500 bg-gray-100/50 dark:bg-gray-700/50 px-2 py-1 rounded-md border border-gray-100 dark:border-gray-600">
+                    <div className="hidden md:flex items-center gap-1.5 text-xs font-mono text-gray-400 dark:text-gray-500 bg-gray-100/50 dark:bg-gray-800/50 px-2 py-1 rounded-md border border-gray-100 dark:border-gray-700">
                         <FileText size={12} />
                         <span>{wordCount} 字</span>
                     </div>
@@ -218,42 +238,48 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
             </div>
 
             {/* Editor Surface */}
-            <div className="flex-1 overflow-y-auto p-8 flex justify-center scroll-smooth bg-gray-50 dark:bg-gray-700 transition-colors duration-200">
-                {/* Paper Container - Discord Style: Darker Gray (gray-800 is #36393f) */}
-                <div className="w-full max-w-3xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-600 min-h-[800px] p-12 rounded-lg relative flex flex-col h-fit transition-all duration-300">
-                    {/* Dotted grid background effect */}
-                    <div className="absolute inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.05]"
-                        style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+            <div className="flex-1 overflow-y-auto scroll-smooth bg-gray-50 dark:bg-gray-700 transition-colors duration-200 relative">
+                <div className="min-h-full flex flex-col items-center p-8">
+                    {/* Paper Container - Discord Style: Darker Gray (gray-800 is #36393f) */}
+                    <div className="w-full max-w-3xl bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 min-h-[800px] p-12 rounded-lg relative flex flex-col h-fit transition-all duration-200">
+                        {/* Dotted grid background effect */}
+                        <div className="absolute inset-0 pointer-events-none opacity-[0.03] dark:opacity-[0.05]"
+                            style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
+                        </div>
+
+                        <input
+                            type="text"
+                            value={chapter.title}
+                            onChange={(e) => onUpdate({ title: e.target.value })}
+                            placeholder="輸入章節標題..."
+                            className="w-full text-4xl font-bold text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 border-none outline-none text-center mb-10 bg-transparent font-serif z-10 transition-colors"
+                        />
+
+                        <textarea
+                            ref={textareaRef}
+                            value={chapter.content}
+                            onChange={(e) => handleContentChange(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="開始您的創作... (按 Tab 縮排)"
+                            className="w-full resize-none border-none outline-none leading-relaxed text-gray-700 dark:text-gray-300 bg-transparent placeholder-gray-300 dark:placeholder-gray-600 font-serif z-10 min-h-[500px] text-lg transition-colors overflow-hidden"
+                            spellCheck={false}
+                        />
+
+
+                        {/* Inline AI Prompt Hint */}
+                        <div className="mt-8 flex justify-center opacity-40 hover:opacity-100 transition-opacity z-10 pb-8">
+                            <button
+                                onClick={() => onAiAction('continue')}
+                                className="flex items-center gap-2 text-violet-400 text-sm hover:text-violet-600 transition-colors px-4 py-2 rounded-full hover:bg-violet-50 cursor-pointer border border-transparent hover:border-violet-100"
+                            >
+                                <Wand2 size={14} />
+                                <span>AI 續寫提示: 點擊此處讓 AI 根據上文繼續創作...</span>
+                            </button>
+                        </div>
                     </div>
 
-                    <input
-                        type="text"
-                        value={chapter.title}
-                        onChange={(e) => onUpdate({ title: e.target.value })}
-                        placeholder="輸入章節標題..."
-                        className="w-full text-4xl font-bold text-gray-800 dark:text-gray-100 placeholder-gray-300 dark:placeholder-gray-600 border-none outline-none text-center mb-10 bg-transparent font-serif z-10 transition-colors"
-                    />
-
-                    <textarea
-                        ref={textareaRef}
-                        value={chapter.content}
-                        onChange={(e) => handleContentChange(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="開始您的創作... (按 Tab 縮排)"
-                        className="w-full resize-none border-none outline-none leading-relaxed text-gray-700 dark:text-gray-300 bg-transparent placeholder-gray-300 dark:placeholder-gray-600 font-serif overflow-hidden z-10 min-h-[500px] text-lg transition-colors"
-                        spellCheck={false}
-                    />
-
-                    {/* Inline AI Prompt Hint */}
-                    <div className="mt-8 flex justify-center opacity-40 hover:opacity-100 transition-opacity z-10 pb-8">
-                        <button
-                            onClick={() => onAiAction('continue')}
-                            className="flex items-center gap-2 text-violet-400 text-sm hover:text-violet-600 transition-colors px-4 py-2 rounded-full hover:bg-violet-50 cursor-pointer border border-transparent hover:border-violet-100"
-                        >
-                            <Wand2 size={14} />
-                            <span>AI 續寫提示: 點擊此處讓 AI 根據上文繼續創作...</span>
-                        </button>
-                    </div>
+                    {/* Explicit Scroll Spacer */}
+                    <div className="h-[50vh] w-full flex-shrink-0" aria-hidden="true" />
                 </div>
             </div>
         </div>
@@ -284,7 +310,7 @@ const IconButton: React.FC<{
         disabled={disabled}
         title={title}
         // Change: Instead of opacity-30, use specific text color for disabled state to ensure visibility
-        className={`p-1.5 rounded transition-colors ${disabled ? 'text-gray-200 cursor-not-allowed' : colorClass}`}
+        className={`p-1.5 rounded transition-colors ${disabled ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : colorClass}`}
     >
         {icon}
     </button>
