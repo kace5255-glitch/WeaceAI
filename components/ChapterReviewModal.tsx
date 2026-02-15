@@ -204,7 +204,18 @@ export const ChapterReviewModal: React.FC<ChapterReviewModalProps> = ({
                     onLocateSuggestion={handleLocateSuggestion}
                   />
                 ) : (
-                  <div className="whitespace-pre-wrap">{content}</div>
+                  <div className="prose prose-indigo dark:prose-invert max-w-none">
+                    <div className="bg-slate-50 dark:bg-gray-800 p-8 rounded-xl border border-slate-100 dark:border-gray-700 text-slate-800 dark:text-gray-200 font-serif text-lg leading-loose shadow-sm">
+                      {content.split('\n').map((paragraph, idx) => {
+                        if (!paragraph.trim()) return <br key={idx} />;
+                        return (
+                          <p key={idx} className="mb-4 text-justify" style={{ textIndent: '2em' }}>
+                            {paragraph}
+                          </p>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -252,8 +263,15 @@ export const ChapterReviewModal: React.FC<ChapterReviewModalProps> = ({
                 <CritiqueStructuredDisplay content={parsedContent} />
               ) : (
                 <div className="prose prose-indigo dark:prose-invert max-w-none">
-                  <div className="bg-slate-50 dark:bg-gray-800 p-6 rounded-xl border border-slate-100 dark:border-gray-700 text-slate-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap font-sans text-sm md:text-base">
-                    {content}
+                  <div className="bg-slate-50 dark:bg-gray-800 p-8 rounded-xl border border-slate-100 dark:border-gray-700 text-slate-800 dark:text-gray-200 font-serif text-lg leading-loose shadow-sm">
+                    {content.split('\n').map((paragraph, idx) => {
+                      if (!paragraph.trim()) return <br key={idx} />;
+                      return (
+                        <p key={idx} className="mb-4 text-justify" style={{ textIndent: '2em' }}>
+                          {paragraph}
+                        </p>
+                      );
+                    })}
                   </div>
                 </div>
               )}
