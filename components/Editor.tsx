@@ -196,7 +196,8 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
                 `}</style>
 
 
-                        {/* AI Groups */}
+                        {/* AI Groups - Hiding unlaunched features */}
+                        {/* 
                         <div className="flex items-center bg-violet-50 dark:bg-violet-900/20 p-1 rounded-lg gap-1 flex-shrink-0">
                             <ToolbarButton onClick={() => onAiAction('continue')} icon={<Feather size={14} />} label="續寫" colorClass="text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40" />
                             <ToolbarButton onClick={() => onAiAction('expand')} icon={<Expand size={14} />} label="擴寫" colorClass="text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40" />
@@ -206,10 +207,13 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
                             <ToolbarButton onClick={() => onAiAction('outline')} icon={<List size={14} />} label="章綱" colorClass="text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40" />
                             <ToolbarButton onClick={() => onAiAction('split')} icon={<Scissors size={14} />} label="拆書" colorClass="text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40" />
                         </div>
+                        */}
 
                         <div className="flex items-center bg-emerald-50 dark:bg-emerald-900/20 p-1 rounded-lg gap-1 flex-shrink-0">
+                            {/* 
                             <ToolbarButton onClick={() => onAiAction('fix')} icon={<CheckCircle size={14} />} label="糾錯" colorClass="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" />
                             <ToolbarButton onClick={() => onAiAction('humanize')} icon={<Ghost size={14} />} label="潤飾" colorClass="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" />
+                            */}
                             <ToolbarButton onClick={() => onAiAction('critique')} icon={<MessageSquarePlus size={14} />} label="點評" colorClass="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" />
                         </div>
 
@@ -266,7 +270,8 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
                         />
 
 
-                        {/* Inline AI Prompt Hint */}
+                        {/* Inline AI Prompt Hint - Hidden for now */}
+                        {/* 
                         <div className="mt-8 flex justify-center opacity-40 hover:opacity-100 transition-opacity z-10 pb-8">
                             <button
                                 onClick={() => onAiAction('continue')}
@@ -276,6 +281,7 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
                                 <span>AI 續寫提示: 點擊此處讓 AI 根據上文繼續創作...</span>
                             </button>
                         </div>
+                        */}
                     </div>
 
                     {/* Explicit Scroll Spacer */}

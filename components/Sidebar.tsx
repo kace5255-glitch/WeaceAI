@@ -1,7 +1,10 @@
 
 import React, { useState } from 'react';
 import { BookOpen, FileText, Plus, Settings, History, Download, LayoutTemplate, FolderPlus, ChevronRight, ChevronDown, Edit2, LogOut, User, Trash2, ArrowUpDown, Search, Moon, Sun, Globe } from 'lucide-react';
-import { Volume } from '../types';
+import { Volume, Memo } from '../types';
+import MemoPad from './MemoPad';
+
+import { ExportChapterModal } from './ExportChapterModal';
 
 interface SidebarProps {
   volumes: Volume[];
@@ -19,6 +22,12 @@ interface SidebarProps {
   toggleTheme: () => void;
   onOpenWorldview?: () => void;
   onOpenSettings?: () => void;
+  novelTitle?: string;
+  // Memos
+  memos?: Memo[];
+  onAddMemo?: (content: string) => void;
+  onUpdateMemo?: (id: string, content: string) => void;
+  onDeleteMemo?: (id: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -36,8 +45,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   theme,
   toggleTheme,
   onOpenWorldview,
-  onOpenSettings
+  onOpenSettings,
+  novelTitle = 'Novel',
+  memos = [],
+  onAddMemo = () => { },
+  onUpdateMemo = () => { },
+  onDeleteMemo = () => { }
 }) => {
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isMemoOpen, setIsMemoOpen] = useState(false);
+
   // Track expanded volumes. Default all expanded.
   const [expandedVolumes, setExpandedVolumes] = useState<Record<string, boolean>>(
     volumes.reduce((acc, vol) => ({ ...acc, [vol.id]: true }), {})
@@ -275,9 +292,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         <div className="grid grid-cols-2 gap-2">
           <ToolButton icon={<Globe size={16} />} label="世界觀" onClick={onOpenWorldview} highlight />
-          <ToolButton icon={<Download size={16} />} label="導出" />
+          <ToolButton icon={<Download size={16} />} label="導出" onClick={() => setIsExportModalOpen(true)} />
           <ToolButton icon={<History size={16} />} label="歷史" />
-          <ToolButton icon={<LayoutTemplate size={16} />} label="備註" />
+          <ToolButton icon={<LayoutTemplate size={16} />} label="備註" onClick={() => setIsMemoOpen(true)} highlight={isMemoOpen} />
           <ToolButton icon={<Settings size={16} />} label="設定" onClick={onOpenSettings} />
         </div>
       </div>
@@ -306,6 +323,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Export Modal */}
+      <ExportChapterModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        volumes={volumes}
+        novelTitle={novelTitle}
+      />
+      <MemoPad
+        isOpen={isMemoOpen}
+        onClose={() => setIsMemoOpen(false)}
+        memos={memos}
+        onAddMemo={onAddMemo}
+        onUpdateMemo={onUpdateMemo}
+        onDeleteMemo={onDeleteMemo}
+      />
     </div >
   );
 };

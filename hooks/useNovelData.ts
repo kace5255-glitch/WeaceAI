@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { NovelSettings, Volume, Character, Vocabulary, Chapter } from '../types';
+import { NovelSettings, Volume, Character, Vocabulary, Chapter, Memo } from '../types';
 import { Session } from '@supabase/supabase-js';
 
 export const useNovelData = (session: Session | null) => {
@@ -15,6 +15,7 @@ export const useNovelData = (session: Session | null) => {
         style: '',
         tone: '',
         background: '',
+        worldview: '',
         systemPersona: ''
     });
     const [volumes, setVolumes] = useState<Volume[]>([]);
@@ -91,6 +92,7 @@ export const useNovelData = (session: Session | null) => {
                         style: novel.style || '',
                         tone: novel.tone || '',
                         background: novel.background || '',
+                        worldview: novel.worldview || '',
                         systemPersona: novel.system_persona || '',
                         apiConfig: novel.api_config || undefined, // Prepare for Hotfix 1
                         customLevels: novel.custom_levels || [],
@@ -137,7 +139,7 @@ export const useNovelData = (session: Session | null) => {
                             role: c.role,
                             gender: c.gender,
                             traits: c.traits,
-                            status: c.status,
+                            status: c.status || '',
                             level: c.level,
                             faction: c.faction, // Support new field
                             period: c.period, // Support new field
@@ -182,6 +184,7 @@ export const useNovelData = (session: Session | null) => {
             style: newSettings.style,
             tone: newSettings.tone,
             background: newSettings.background,
+            worldview: newSettings.worldview,
             system_persona: newSettings.systemPersona,
             custom_levels: newSettings.customLevels,
             custom_factions: newSettings.customFactions,
@@ -297,12 +300,16 @@ export const useNovelData = (session: Session | null) => {
         setCharacters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
 
         const dbUpdates: any = {};
-        if (updates.name) dbUpdates.name = updates.name;
-        if (updates.role) dbUpdates.role = updates.role;
-        if (updates.gender) dbUpdates.gender = updates.gender;
-        if (updates.traits) dbUpdates.traits = updates.traits;
-        if (updates.status) dbUpdates.status = updates.status;
-        if (updates.level) dbUpdates.level = updates.level;
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.role !== undefined) dbUpdates.role = updates.role;
+        if (updates.gender !== undefined) dbUpdates.gender = updates.gender;
+        if (updates.traits !== undefined) dbUpdates.traits = updates.traits;
+        if (updates.status !== undefined) dbUpdates.status = updates.status;
+        if (updates.level !== undefined) dbUpdates.level = updates.level;
+        if (updates.faction !== undefined) dbUpdates.faction = updates.faction;
+        if (updates.period !== undefined) dbUpdates.period = updates.period;
+        if (updates.lifeStatus !== undefined) dbUpdates.life_status = updates.lifeStatus;
+        if (updates.race !== undefined) dbUpdates.race = updates.race;
 
         if (Object.keys(dbUpdates).length > 0) {
             await supabase.from('characters').update(dbUpdates).eq('id', id);
@@ -409,13 +416,86 @@ export const useNovelData = (session: Session | null) => {
         return { newCharsCount: newChars.length, newVocabsCount: newVocabs.length };
     };
 
+    // --- Memos Logic ---
+    const [memos, setMemos] = useState<Memo[]>([]);
+
+    useEffect(() => {
+        if (!novelId) return;
+
+        const loadMemos = async () => {
+            const { data, error } = await supabase
+                .from('memos')
+                .select('*')
+                .eq('novel_id', novelId)
+                .order('updated_at', { ascending: false });
+
+            if (error) {
+                console.error('Error loading memos:', error);
+                return;
+            }
+            setMemos(data || []);
+        };
+
+        loadMemos();
+    }, [novelId]);
+
+    const addMemo = async (content: string) => {
+        if (!novelId) return;
+        try {
+            const { data, error } = await supabase
+                .from('memos')
+                .insert([{ novel_id: novelId, content }])
+                .select()
+                .single();
+
+            if (error) throw error;
+            setMemos(prev => [data, ...prev]);
+        } catch (error) {
+            console.error('Error adding memo:', error);
+            // alert('新增備註失敗，請確認資料庫已建立 memos 表');
+        }
+    };
+
+    const updateMemo = async (id: string, content: string) => {
+        try {
+            const { error } = await supabase
+                .from('memos')
+                .update({ content, updated_at: new Date().toISOString() })
+                .eq('id', id);
+
+            if (error) throw error;
+            setMemos(prev => prev.map(m => m.id === id ? { ...m, content } : m));
+        } catch (error) {
+            console.error('Error updating memo:', error);
+        }
+    };
+
+    const deleteMemo = async (id: string) => {
+        try {
+            const { error } = await supabase
+                .from('memos')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            setMemos(prev => prev.filter(m => m.id !== id));
+        } catch (error) {
+            console.error('Error deleting memo:', error);
+        }
+    };
+
     return {
         loading,
+        novelId,
         settings, updateSettings,
-        volumes, updateVolumeTitle, addVolume, deleteVolume,
+        volumes, updateVolume: updateVolumeTitle, addVolume, deleteVolume,
         addChapter, updateChapter, deleteChapter,
         characters, addCharacter, updateCharacter, deleteCharacter,
         vocabularies, addVocabulary, updateVocabulary, deleteVocabulary,
+        memos, // Export Memos
+        addMemo,    // Export Memo Actions
+        updateMemo,
+        deleteMemo,
         importData // Export this
     };
 };

@@ -80,10 +80,11 @@ const App: React.FC = () => {
   const {
     loading: isDataLoading,
     settings, updateSettings,
-    volumes, updateVolumeTitle, addVolume, deleteVolume,
+    volumes, updateVolume: updateVolumeTitle, addVolume, deleteVolume,
     addChapter, updateChapter, deleteChapter,
     characters, addCharacter, updateCharacter, deleteCharacter,
     vocabularies, addVocabulary, updateVocabulary, deleteVocabulary,
+    memos, addMemo, updateMemo, deleteMemo,
     importData
   } = useNovelData(session);
 
@@ -334,7 +335,7 @@ const App: React.FC = () => {
         currentChapter.content,
         currentChapter.contentHash
       );
-      
+
       if (!contentChanged) {
         // 直接使用已保存的點評
         setReviewContent(currentChapter.critique);
@@ -362,7 +363,7 @@ const App: React.FC = () => {
     setReviewTitle('AI 文章點評');
     setReviewAction('critique');
     setIsReviewModalOpen(true);
-    
+
     try {
       const params: AIRequestParams = {
         chapter: currentChapter,
@@ -378,7 +379,7 @@ const App: React.FC = () => {
       };
       const critique = await generateCritique(params);
       setReviewContent(critique);
-      
+
       // 保存點評到數據庫
       const { generateContentHash } = await import('./utils/contentHash');
       const newHash = generateContentHash(currentChapter.content);
@@ -387,7 +388,7 @@ const App: React.FC = () => {
         critiqueGeneratedAt: new Date(),
         contentHash: newHash
       });
-      
+
     } catch (e: any) {
       setReviewContent(getFriendlyErrorMessage(e));
     } finally {
@@ -655,6 +656,7 @@ const App: React.FC = () => {
         onLogout={() => supabase.auth.signOut()}
         onOpenWorldview={() => setIsWorldviewOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        novelTitle={settings.title}
       />
 
       <main className="flex-1 flex relative">

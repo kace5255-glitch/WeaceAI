@@ -29,6 +29,14 @@ export interface Vocabulary {
   tags?: string[]; // 自定義標籤
 }
 
+export interface Memo {
+  id: string;
+  novel_id: string;
+  content: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Chapter {
   id: string;
   title: string;

@@ -156,7 +156,7 @@ export const ChapterReviewModal: React.FC<ChapterReviewModalProps> = ({
               <div className="p-1.5 bg-indigo-100 dark:bg-indigo-900/30 rounded-lg">
                 {title.includes('點評') ? <MessageSquare size={20} className="text-indigo-600 dark:text-indigo-400" /> : <FileText size={20} className="text-indigo-600 dark:text-indigo-400" />}
               </div>
-              <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100">{title}</h3>
+              <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 font-serif">{title}</h3>
             </div>
             <div className="flex items-center gap-2">
               {/* Split view toggle */}

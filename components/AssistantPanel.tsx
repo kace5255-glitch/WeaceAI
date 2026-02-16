@@ -867,14 +867,14 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({
                                         className="w-full appearance-none bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-slate-700 dark:text-gray-200 font-medium py-2 px-3 pr-8 rounded-lg leading-tight focus:outline-none focus:border-violet-400 dark:focus:border-violet-500 focus:ring-4 focus:ring-violet-50/50 dark:focus:ring-violet-900/20 text-xs shadow-sm transition-all cursor-pointer hover:border-violet-300 dark:hover:border-violet-500"
                                     >
                                         <option value="Google Flash">Gemini 3</option>
-                                        <option value="Google Pro">Gemini 3 Pro (Exp)</option>
+                                        {/* <option value="Google Pro">Gemini 3 Pro (Exp)</option> */}
                                         <option value="DeepSeek R1">DeepSeek R1</option>
                                         <option value="DeepSeek V3.2">DeepSeek V3.2</option>
-                                        <option value="OpenRouter Sonnet 4.5">Claude Sonnet 4.5</option>
-                                        <option value="OpenRouter Opus 4.6">Claude Opus 4.6</option>
+                                        {/* <option value="OpenRouter Sonnet 4.5">Claude Sonnet 4.5</option> */}
+                                        {/* <option value="OpenRouter Opus 4.6">Claude Opus 4.6</option> */}
                                         <option value="Qwen3-Max">Qwen3-Max</option>
                                         <option value="Qwen3-Plus">Qwen3-Plus</option>
-                                        <option value="Kimi">Kimi</option>
+                                        {/* <option value="Kimi">Kimi</option> */}
                                     </select>
                                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400 group-hover:text-violet-500 transition-colors">
                                         <ChevronDown size={14} />

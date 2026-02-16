@@ -27,6 +27,8 @@ app.get('/api', (req, res) => {
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message: { error: "Too many requests, please try again later." }
 });
 app.use('/api/', limiter);
@@ -123,6 +125,12 @@ const authenticateUser = async (req, res, next) => {
 // Apply Auth Middleware to API routes
 app.use('/api/', authenticateUser);
 
+// --- Chat Routes (New AI ChatBox) ---
+// Pass supabase client to request for use in routes
+app.use('/api/chat', (req, res, next) => {
+    req.supabase = supabase;
+    next();
+}, require('./routes/chat'));
 
 // 建構 System Prompt — AI 的角色人設與寫作規範
 const buildSystemPrompt = (params) => {
@@ -180,7 +188,8 @@ ${settings.worldview}
 21. 直接輸出小說正文，不包含任何回覆語、解釋、元資訊或「以下是...」等開場白
 22. 絕對不要在開頭重複章節標題、章節號碼或任何 Markdown 標題（如 # 第一章）
 23. 使用正確的中文標點：「」用於對話、——用作破折號、……用作省略號，禁止使用英文標點
-24. 【強制格式】每個段落的開頭必須有兩個全形空格（　　），這是中文排版的硬性規定。不要使用 Markdown 的列表符號。`;
+24. 【強制格式】每個段落的開頭必須有兩個全形空格（　　），這是中文排版的硬性規定。不要使用 Markdown 的列表符號。
+25. 【語言要求】全篇必須使用繁體中文（Traditional Chinese）撰寫，嚴禁使用簡體中文。`;
 };
 
 // 建構 User Prompt — 具體的寫作任務與上下文
@@ -379,15 +388,15 @@ app.post('/api/worldview', async (req, res) => {
                 generationConfig: { temperature }
             });
             content = result.response.text();
-        } else if (modelSelection.startsWith('DeepSeek')) {
+        } else if (modelSelection.startsWith('DeepSeek') || modelSelection === 'DeepSeek R1') {
             if (!deepseek) throw new Error("DeepSeek API Key not configured.");
             const response = await deepseek.chat.completions.create({
-                model: 'deepseek-chat',
+                model: 'deepseek-reasoner', // 使用 R1 以獲得最強大的邏輯架構
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userPrompt }
                 ],
-                temperature
+                temperature: 0.7
             });
             content = response.choices[0].message.content;
         } else if (modelSelection === 'Kimi') {
@@ -424,16 +433,27 @@ app.post('/api/worldview', async (req, res) => {
             });
             content = response.choices[0].message.content;
         } else {
-            // 預設用 Google Flash
-            const googleModel = genAI.getGenerativeModel({
-                model: 'gemini-2.5-flash',
-                systemInstruction: systemPrompt
-            });
-            const result = await googleModel.generateContent({
-                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                generationConfig: { temperature }
-            });
-            content = result.response.text();
+            // 預設切換為 DeepSeek R1 (依照使用者偏好優化邏輯)
+            if (deepseek) {
+                const response = await deepseek.chat.completions.create({
+                    model: 'deepseek-reasoner',
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: userPrompt }
+                    ]
+                });
+                content = response.choices[0].message.content;
+            } else {
+                const googleModel = genAI.getGenerativeModel({
+                    model: 'gemini-2.5-flash',
+                    systemInstruction: systemPrompt
+                });
+                const result = await googleModel.generateContent({
+                    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+                    generationConfig: { temperature }
+                });
+                content = result.response.text();
+            }
         }
 
         res.json({ content });
@@ -584,7 +604,7 @@ app.post('/api/briefing', async (req, res) => {
         4. 使用繁體中文。`;
 
         const response = await deepseek.chat.completions.create({
-            model: "deepseek-chat",
+            model: "deepseek-chat", // 這是最新的 V3 版本 (對應您的 V3.2 需求)
             messages: [
                 { role: "system", content: "你是一位資深編輯，擅長撰寫小說章節簡報。" },
                 { role: "user", content: prompt }
@@ -819,6 +839,19 @@ ${chapterContent}
     }
 });
 
+
+// Global Error Handler for API
+app.use('/api', (err, req, res, next) => {
+    console.error(err.stack);
+    // Explicitly handle body-parser errors (like malformed JSON)
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+        return res.status(400).json({ error: "Invalid JSON format" });
+    }
+
+    // Hide stack trace in production
+    const errorMsg = process.env.NODE_ENV === 'production' ? "Internal Server Error" : err.message;
+    res.status(err.status || 500).json({ error: errorMsg });
+});
 app.get('*', (req, res) => {
     // Check if it's an API call or a file request
     if (req.path.startsWith('/api')) return;
