@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  BookOpen, PenTool, Sparkles, TrendingUp, Clock, Award, ChevronRight, Plus,
+  BookOpen, PenTool, Sparkles, Clock, ChevronRight, Plus,
   FileText, Zap, Home, FolderOpen, Settings, LogOut, Moon, Sun,
   Bot, ListTree, MessageSquareText, Wand2, Globe, BookMarked,
-  BarChart3, Flame, Star, ArrowRight, Layers, Trash2, Edit3, Check, X, MoreVertical,
+  BarChart3, Flame, Star, ArrowRight, Trash2, Edit3, Check, X, MoreVertical,
   Search, Bell
 } from 'lucide-react';
 import { NovelSummary } from '../hooks/useNovelData';
@@ -91,15 +91,6 @@ export const HomePage: React.FC<HomePageProps> = ({
     { id: 'stats', icon: BarChart3, label: '數據統計' },
   ];
 
-  const aiTools = [
-    { icon: PenTool, title: 'AI 續寫', desc: '根據上下文自動延續劇情', color: 'from-violet-500 to-purple-600' },
-    { icon: ListTree, title: 'AI 大綱', desc: '智能生成章節大綱與結構', color: 'from-blue-500 to-cyan-600' },
-    { icon: MessageSquareText, title: 'AI 點評', desc: '11 維度專業文章點評分析', color: 'from-amber-500 to-orange-600' },
-    { icon: Bot, title: 'AI 角色', desc: '一鍵生成立體角色設定', color: 'from-emerald-500 to-teal-600' },
-    { icon: Globe, title: '世界觀', desc: '構建完整的世界觀體系', color: 'from-pink-500 to-rose-600' },
-    { icon: Sparkles, title: 'AI 潤飾', desc: '提升文字品質消除AI感', color: 'from-indigo-500 to-blue-600' },
-  ];
-
   const gradientColors = [
     'from-violet-400 to-purple-600',
     'from-blue-400 to-indigo-600',
@@ -137,7 +128,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     const isMenuOpen = menuOpenId === novel.id;
 
     return (
-      <div className="group relative bg-white dark:bg-gray-800/60 rounded-2xl overflow-hidden border border-gray-200/80 dark:border-gray-700/40 hover:shadow-xl hover:border-violet-300 dark:hover:border-violet-500/30 transition-all">
+      <div className="group relative bg-white dark:bg-gray-800/60 rounded-2xl overflow-hidden border border-gray-200/80 dark:border-gray-700/40 hover:shadow-xl hover:border-violet-300 dark:hover:border-violet-500/30 hover:-translate-y-0.5 transition-all">
         {/* 封面區 */}
         <div className={`h-32 bg-gradient-to-br ${gradient} relative cursor-pointer`} onClick={() => !isRenaming && onOpenNovel(novel.id)}>
           <div className="w-full h-full flex items-center justify-center">
@@ -202,55 +193,48 @@ export const HomePage: React.FC<HomePageProps> = ({
   // 首頁內容
   const renderHomeContent = () => (
     <>
-      {/* 頂部問候區 */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-1">{greeting}，{userName}</h2>
-            <p className="text-gray-500 dark:text-gray-400">{currentTime.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</p>
-          </div>
-          <button onClick={onCreateNovel} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-violet-500/25 transition-all active:scale-95">
-            <Plus size={18} /> 新建小說
-          </button>
+      {/* Hero 歡迎區 — 漸層背景 */}
+      <div className="relative rounded-2xl overflow-hidden mb-8">
+        <div className="absolute inset-0 bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 dark:from-violet-700 dark:via-purple-800 dark:to-indigo-900" />
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full -translate-y-1/2 translate-x-1/3" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-white rounded-full translate-y-1/2 -translate-x-1/4" />
         </div>
-      </div>
-
-      {/* 統計概覽 */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        {[
-          { icon: PenTool, value: formatNumber(stats.totalWords), label: '總字數', iconBg: 'bg-violet-100 dark:bg-violet-500/15', iconColor: 'text-violet-600 dark:text-violet-400', hoverIcon: TrendingUp, hoverColor: 'text-emerald-500' },
-          { icon: BookOpen, value: String(stats.totalChapters), label: '章節數', iconBg: 'bg-blue-100 dark:bg-blue-500/15', iconColor: 'text-blue-600 dark:text-blue-400', hoverIcon: Layers, hoverColor: 'text-blue-500' },
-          { icon: Flame, value: `${stats.writingStreak} 天`, label: '連續創作', iconBg: 'bg-amber-100 dark:bg-amber-500/15', iconColor: 'text-amber-600 dark:text-amber-400', hoverIcon: Zap, hoverColor: 'text-amber-500' },
-          { icon: Star, value: String(stats.achievements), label: '成就', iconBg: 'bg-emerald-100 dark:bg-emerald-500/15', iconColor: 'text-emerald-600 dark:text-emerald-400', hoverIcon: Award, hoverColor: 'text-emerald-500' },
-        ].map((s, i) => (
-          <div key={i} className="bg-white dark:bg-gray-800/60 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/40 hover:shadow-lg transition-all group">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`w-10 h-10 rounded-xl ${s.iconBg} flex items-center justify-center`}><s.icon size={20} className={s.iconColor} /></div>
-              <s.hoverIcon size={16} className={`${s.hoverColor} opacity-0 group-hover:opacity-100 transition-opacity`} />
+        <div className="relative px-8 py-10">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-violet-200 text-sm mb-1">{currentTime.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</p>
+              <h2 className="text-3xl font-bold text-white mb-2">{greeting}，{userName}</h2>
+              <p className="text-violet-200/80 text-sm max-w-md">讓 AI 助手陪伴你的創作旅程，開啟今天的寫作靈感</p>
             </div>
-            <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{s.value}</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{s.label}</p>
+            <div className="flex items-center gap-3">
+              {novels.length > 0 && (
+                <button onClick={() => onOpenNovel(novels[0].id)} className="flex items-center gap-2 px-5 py-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white text-sm font-medium rounded-xl border border-white/20 transition-all active:scale-95">
+                  <BookOpen size={16} /> 繼續寫作
+                </button>
+              )}
+              <button onClick={onCreateNovel} className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-violet-700 text-sm font-bold rounded-xl shadow-lg shadow-black/10 transition-all active:scale-95">
+                <Plus size={16} /> 新建小說
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
-
-      {/* AI 工具區 */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">AI 寫作工具</h3>
-          <button onClick={() => setActiveNav('tools')} className="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 font-medium flex items-center gap-1 transition-colors">
-            查看全部 <ChevronRight size={14} />
-          </button>
-        </div>
-        <div className="grid grid-cols-3 gap-4">
-          {aiTools.slice(0, 3).map((tool, i) => (
-            <button key={i} onClick={() => novels[0] && onOpenNovel(novels[0].id)} className="group relative bg-white dark:bg-gray-800/60 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/40 hover:shadow-xl hover:border-violet-300 dark:hover:border-violet-500/30 transition-all text-left overflow-hidden">
-              <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center shadow-lg mb-4`}><tool.icon size={20} className="text-white" /></div>
-              <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1">{tool.title}</h4>
-              <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">{tool.desc}</p>
-              <ArrowRight size={14} className="absolute bottom-5 right-5 text-gray-300 dark:text-gray-600 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors" />
-            </button>
-          ))}
+          {/* 統計概覽 — 嵌入 Hero 底部 */}
+          <div className="grid grid-cols-4 gap-4 mt-8">
+            {[
+              { icon: PenTool, value: formatNumber(stats.totalWords), label: '總字數' },
+              { icon: BookOpen, value: String(stats.totalChapters), label: '章節數' },
+              { icon: FolderOpen, value: String(novels.length), label: '作品數' },
+              { icon: Flame, value: `${stats.writingStreak} 天`, label: '連續創作' },
+            ].map((s, i) => (
+              <div key={i} className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 border border-white/10">
+                <div className="flex items-center gap-2 mb-1">
+                  <s.icon size={14} className="text-violet-200" />
+                  <span className="text-xs text-violet-200/70">{s.label}</span>
+                </div>
+                <p className="text-xl font-bold text-white">{s.value}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -273,7 +257,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-4">
-            {novels.slice(0, 3).map((novel, i) => <NovelCard key={novel.id} novel={novel} index={i} />)}
+            {novels.slice(0, 6).map((novel, i) => <NovelCard key={novel.id} novel={novel} index={i} />)}
           </div>
         )}
       </div>
@@ -286,7 +270,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">我的小說</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">共 {novels.length} 部作品</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">共 {novels.length} 部作品 · {formatNumber(novels.reduce((s, n) => s + n.wordCount, 0))} 字</p>
         </div>
         <button onClick={onCreateNovel} className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-violet-500/25 transition-all active:scale-95">
           <Plus size={18} /> 新建小說
@@ -297,13 +281,13 @@ export const HomePage: React.FC<HomePageProps> = ({
         <div className="bg-white dark:bg-gray-800/60 rounded-2xl p-16 border border-gray-200/80 dark:border-gray-700/40 border-dashed text-center">
           <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center"><BookMarked size={36} className="text-violet-600 dark:text-violet-400" /></div>
           <h4 className="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">還沒有任何小說</h4>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mb-6 max-w-md mx-auto">點擊上方「新建小說」按鈕，開始你的第一部創作。AI 助手會全程陪伴你的寫作旅程。</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mb-6 max-w-md mx-auto">點擊上方「新建小說」按鈕，開始你的第一部創作</p>
           <button onClick={onCreateNovel} className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-violet-500/25 transition-all active:scale-95"><Plus size={16} /> 創建新小說</button>
         </div>
       ) : (
         <div className="grid grid-cols-3 gap-5">
           {/* 新建小說卡片 */}
-          <button onClick={onCreateNovel} className="flex flex-col items-center justify-center h-[220px] bg-white dark:bg-gray-800/60 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-lg transition-all group">
+          <button onClick={onCreateNovel} className="flex flex-col items-center justify-center h-[220px] bg-white dark:bg-gray-800/60 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-lg hover:-translate-y-0.5 transition-all group">
             <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-gray-700 group-hover:bg-violet-100 dark:group-hover:bg-violet-500/15 flex items-center justify-center mb-3 transition-colors">
               <Plus size={24} className="text-gray-400 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors" />
             </div>
@@ -316,29 +300,6 @@ export const HomePage: React.FC<HomePageProps> = ({
     </>
   );
 
-  // AI 工具頁面
-  const renderToolsContent = () => (
-    <>
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">AI 寫作工具</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">進入編輯器後可使用完整功能</p>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        {aiTools.map((tool, i) => (
-          <button key={i} onClick={() => novels[0] && onOpenNovel(novels[0].id)} className="group relative bg-white dark:bg-gray-800/60 rounded-2xl p-6 border border-gray-200/80 dark:border-gray-700/40 hover:shadow-xl hover:border-violet-300 dark:hover:border-violet-500/30 transition-all text-left overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 opacity-[0.04] group-hover:opacity-[0.08] transition-opacity">
-              <div className={`w-full h-full bg-gradient-to-br ${tool.color} rounded-full translate-x-8 -translate-y-8`} />
-            </div>
-            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.color} flex items-center justify-center shadow-lg mb-4`}><tool.icon size={22} className="text-white" /></div>
-            <h4 className="text-base font-bold text-gray-800 dark:text-gray-100 mb-1.5">{tool.title}</h4>
-            <p className="text-xs text-gray-400 dark:text-gray-500 leading-relaxed">{tool.desc}</p>
-            <ArrowRight size={14} className="absolute bottom-6 right-6 text-gray-300 dark:text-gray-600 group-hover:text-violet-500 dark:group-hover:text-violet-400 transition-colors" />
-          </button>
-        ))}
-      </div>
-    </>
-  );
-
   // 統計頁面
   const renderStatsContent = () => (
     <>
@@ -346,18 +307,32 @@ export const HomePage: React.FC<HomePageProps> = ({
         <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">數據統計</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400">你的創作數據一覽</p>
       </div>
-      <div className="grid grid-cols-2 gap-5">
+
+      {/* 主要統計卡片 */}
+      <div className="grid grid-cols-2 gap-5 mb-6">
         {[
-          { icon: PenTool, value: formatNumber(stats.totalWords), label: '總字數', sub: `約 ${Math.ceil(stats.totalWords / 500)} 頁`, bg: 'bg-violet-100 dark:bg-violet-500/15', color: 'text-violet-600 dark:text-violet-400' },
-          { icon: BookOpen, value: String(stats.totalChapters), label: '總章節數', sub: `${novels.length} 部小說`, bg: 'bg-blue-100 dark:bg-blue-500/15', color: 'text-blue-600 dark:text-blue-400' },
-          { icon: Flame, value: `${stats.writingStreak}`, label: '連續創作天數', sub: '持續寫作中', bg: 'bg-amber-100 dark:bg-amber-500/15', color: 'text-amber-600 dark:text-amber-400' },
-          { icon: FolderOpen, value: String(novels.length), label: '作品數量', sub: `${novels.filter(n => n.wordCount > 0).length} 部進行中`, bg: 'bg-emerald-100 dark:bg-emerald-500/15', color: 'text-emerald-600 dark:text-emerald-400' },
+          { icon: PenTool, value: formatNumber(stats.totalWords), label: '總字數', sub: `約 ${Math.ceil(stats.totalWords / 500)} 頁`, gradient: 'from-violet-500 to-purple-600', bg: 'bg-violet-50 dark:bg-violet-500/10' },
+          { icon: BookOpen, value: String(stats.totalChapters), label: '總章節數', sub: `${novels.length} 部小說`, gradient: 'from-blue-500 to-cyan-600', bg: 'bg-blue-50 dark:bg-blue-500/10' },
         ].map((s, i) => (
-          <div key={i} className="bg-white dark:bg-gray-800/60 rounded-2xl p-6 border border-gray-200/80 dark:border-gray-700/40">
-            <div className={`w-12 h-12 rounded-xl ${s.bg} flex items-center justify-center mb-4`}><s.icon size={24} className={s.color} /></div>
+          <div key={i} className={`${s.bg} rounded-2xl p-6 border border-gray-200/50 dark:border-gray-700/30`}>
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${s.gradient} flex items-center justify-center shadow-lg mb-4`}><s.icon size={22} className="text-white" /></div>
             <p className="text-3xl font-bold text-gray-800 dark:text-gray-100 mb-1">{s.value}</p>
             <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{s.label}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{s.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { icon: Flame, value: `${stats.writingStreak}`, label: '連續創作天數', color: 'text-amber-500' },
+          { icon: FolderOpen, value: String(novels.length), label: '作品數量', color: 'text-emerald-500' },
+          { icon: Star, value: String(novels.filter(n => n.wordCount > 0).length), label: '進行中', color: 'text-violet-500' },
+        ].map((s, i) => (
+          <div key={i} className="bg-white dark:bg-gray-800/60 rounded-2xl p-5 border border-gray-200/80 dark:border-gray-700/40 text-center">
+            <s.icon size={24} className={`${s.color} mx-auto mb-3`} />
+            <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{s.value}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{s.label}</p>
           </div>
         ))}
       </div>
@@ -454,7 +429,6 @@ export const HomePage: React.FC<HomePageProps> = ({
           <div className="max-w-6xl mx-auto px-8 py-8">
           {activeNav === 'home' && renderHomeContent()}
           {activeNav === 'works' && renderWorksContent()}
-          {activeNav === 'tools' && renderToolsContent()}
           {activeNav === 'stats' && renderStatsContent()}
           </div>
         </div>
