@@ -1,0 +1,9 @@
+{
+    "configs": {
+        "server": {
+            "root": "server",
+            "install_command": "npm install",
+            "start_command": "node index.js"
+        }
+    }
+}

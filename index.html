@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="https://lucide.dev/favicon.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>幻靈寫作AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            // ═══════════════════════════════════════════
+            //   淺色模式 — 奶油暖白書房主題
+            //   設計理念：護眼暖色調，模擬精裝書籍的紙張質感
+            //   深色模式 — 分層墨曜石主題
+            //   設計理念：層次分明的深色，減少視覺疲勞
+            // ═══════════════════════════════════════════
+            gray: {
+              50: '#faf9f7',  // 淺：最亮背景（紙張白帶微暖）
+              100: '#f3f1ed',  // 淺：卡片底色
+              200: '#e8e4dd',  // 淺：邊框/分隔線
+              300: '#d4cfc6',  // 淺：禁用態
+              400: '#a8a29e',  // 共用：次要文字
+              500: '#78716c',  // 共用：輔助文字
+              600: '#44403c',  // 淺：正文文字
+              700: '#292524',  // 深：懸浮/高亮面板
+              750: '#1e1e22',  // 深：主要面板背景
+              800: '#18181b',  // 深：側欄背景
+              850: '#141416',  // 深：深層面板
+              900: '#0f0f11',  // 深：主要背景
+              950: '#09090b',  // 深：最深層（陰影用）
+            },
+            slate: {
+              50: '#f8f8f6', 100: '#f0eeeb', 200: '#e2dfd9', 300: '#ccc8c0',
+              400: '#a19b93', 500: '#7a756e', 600: '#57534e', 700: '#33302c',
+              750: '#1e1e22', 800: '#18181b', 850: '#141416', 900: '#0f0f11', 950: '#09090b',
+            },
+            zinc: {
+              50: '#faf9f7', 100: '#f3f1ed', 200: '#e8e4dd', 300: '#d4cfc6',
+              400: '#a8a29e', 500: '#78716c', 600: '#44403c', 700: '#292524',
+              750: '#1e1e22', 800: '#18181b', 850: '#141416', 900: '#0f0f11', 950: '#09090b',
+            },
+            neutral: {
+              50: '#faf9f7', 100: '#f3f1ed', 200: '#e8e4dd', 300: '#d4cfc6',
+              400: '#a8a29e', 500: '#78716c', 600: '#44403c', 700: '#292524',
+              750: '#1e1e22', 800: '#18181b', 850: '#141416', 900: '#0f0f11', 950: '#09090b',
+            },
+
+            // ═══════════════════════════════════════════
+            //   品牌色 — 紫晶 (Amethyst)
+            //   淺色模式用 500-700，深色模式用 300-500
+            // ═══════════════════════════════════════════
+            violet: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              200: '#ddd6fe',
+              300: '#c4b5fd',
+              400: '#a78bfa',
+              500: '#8b5cf6',  // 主品牌色
+              600: '#7c3aed',  // 懸浮
+              700: '#6d28d9',
+              800: '#5b21b6',
+              900: '#4c1d95',
+              950: '#2e1065',
+            },
+            purple: {
+              50: '#f5f3ff', 100: '#ede9fe', 200: '#ddd6fe', 300: '#c4b5fd', 400: '#a78bfa',
+              500: '#8b5cf6', 600: '#7c3aed', 700: '#6d28d9', 800: '#5b21b6', 900: '#4c1d95', 950: '#2e1065',
+            },
+            indigo: {
+              50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8',
+              500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81', 950: '#1e1b4b',
+            },
+            blue: {
+              50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa',
+              500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8', 800: '#1e40af', 900: '#1e3a8a', 950: '#172554',
+            },
+
+            // ═══════════════════════════════════════════
+            //   語義色 — 柔和版
+            // ═══════════════════════════════════════════
+            green: {
+              400: '#4ade80',
+              500: '#22c55e',
+              600: '#16a34a',
+            },
+            red: {
+              400: '#f87171',
+              500: '#ef4444',
+              600: '#dc2626',
+            },
+            amber: {
+              400: '#fbbf24',
+              500: '#f59e0b',
+              600: '#d97706',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    html {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      transition: background-color 200ms ease;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    #root {
+      height: 100%;
+      zoom: 1.1;
+    }
+
+    /* ═══ 主題切換過渡 — 只在切換時啟用，避免干擾其他動畫 ═══ */
+    .theme-transitioning,
+    .theme-transitioning *,
+    .theme-transitioning *::before,
+    .theme-transitioning *::after {
+      transition: background-color 200ms ease,
+        color 200ms ease,
+        border-color 200ms ease,
+        box-shadow 200ms ease,
+        fill 200ms ease,
+        stroke 200ms ease !important;
+    }
+
+    /* ═══ 淺色模式滾動條 — 溫暖象牙色 ═══ */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #d4cfc6;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a8a29e;
+    }
+
+    /* ═══ 深色模式滾動條 — 低調深灰 ═══ */
+    .dark ::-webkit-scrollbar-thumb {
+      background: #292524;
+    }
+
+    .dark ::-webkit-scrollbar-thumb:hover {
+      background: #44403c;
+    }
+
+    /* ═══ 文字選取高亮 ═══ */
+    ::selection {
+      background: #ddd6fe;
+      color: #4c1d95;
+    }
+
+    .dark ::selection {
+      background: #4c1d95;
+      color: #ede9fe;
+    }
+
+    /* ═══ 淺色模式全局微調 ═══ */
+    body {
+      background-color: #faf9f7;
+    }
+
+    .dark body,
+    .dark {
+      background-color: #0f0f11;
+    }
+  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom": "https://esm.sh/react-dom@^19.2.4",
+    "react-dom/client": "https://esm.sh/react-dom@^19.2.4/client",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+
+</html>
