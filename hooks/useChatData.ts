@@ -10,9 +10,20 @@ export function useChatData() {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [selectedModel, setSelectedModel] = useState('Google Flash');
+  const [selectedModel, setSelectedModel] = useState('Claude Haiku');
   const [chatMode, setChatMode] = useState<ChatMode>('auto');
+  const [thinking, setThinking] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // 舊模型名稱遷移
+  const MODEL_MIGRATION: Record<string, string> = {
+    'Google Flash': 'Claude Haiku',
+    'Google Pro': 'Claude Haiku',
+    'DeepSeek R1': 'DeepSeek',
+    'DeepSeek V3.2': 'DeepSeek',
+    'Qwen3-Max': 'Qwen3',
+    'Qwen3-Plus': 'Qwen3',
+  };
 
   // 載入對話列表
   const loadConversations = useCallback(async () => {
@@ -33,7 +44,10 @@ export function useChatData() {
       const msgs = await chatApi.getMessages(id);
       setMessages(msgs);
       const conv = conversations.find(c => c.id === id);
-      if (conv) setSelectedModel(conv.model);
+      if (conv) {
+        const migrated = MODEL_MIGRATION[conv.model] || conv.model;
+        setSelectedModel(migrated);
+      }
     } catch (e) {
       console.error('載入訊息失敗:', e);
     } finally {
@@ -143,7 +157,7 @@ export function useChatData() {
     let fullContent = '';
     try {
       await chatApi.streamChat(
-        { conversationId: convId, message: finalContent, imageUrls, model: selectedModel, mode: chatMode },
+        { conversationId: convId, message: finalContent, imageUrls, model: selectedModel, mode: chatMode, thinking },
         (token) => {
           fullContent += token;
           setStreamingContent(fullContent);
@@ -208,7 +222,7 @@ export function useChatData() {
       setIsStreaming(false);
       setStreamingContent('');
     }
-  }, [activeConvId, selectedModel, chatMode]);
+  }, [activeConvId, selectedModel, chatMode, thinking]);
 
   // 停止生成
   const stopStreaming = useCallback(() => {
@@ -265,7 +279,7 @@ export function useChatData() {
     let fullContent = '';
     try {
       await chatApi.streamChat(
-        { conversationId: activeConvId, message: userMsg.content, imageUrls: userMsg.image_urls, model: selectedModel, skipSaveUser: true, mode: chatMode },
+        { conversationId: activeConvId, message: userMsg.content, imageUrls: userMsg.image_urls, model: selectedModel, skipSaveUser: true, mode: chatMode, thinking },
         (token) => { fullContent += token; setStreamingContent(fullContent); },
         (messageId) => {
           const newMsg: ChatMessage = {
@@ -289,7 +303,7 @@ export function useChatData() {
       setIsStreaming(false);
       setStreamingContent('');
     }
-  }, [activeConvId, selectedModel, messages, isStreaming]);
+  }, [activeConvId, selectedModel, messages, isStreaming, thinking]);
 
   // 編輯並重新發送用戶訊息
   const editAndResend = useCallback(async (userMsgId: string, newContent: string) => {
@@ -319,6 +333,7 @@ export function useChatData() {
   return {
     conversations, activeConvId, messages, isLoading, isLoadingMessages, isStreaming,
     streamingContent, selectedModel, setSelectedModel, chatMode, setChatMode,
+    thinking, setThinking,
     loadConversations, selectConversation, createConversation,
     deleteConv, renameConv, togglePin, sendMessage, stopStreaming,
     regenerate, editAndResend

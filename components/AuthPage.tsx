@@ -123,7 +123,7 @@ export const AuthPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-violet-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-violet-50 flex items-start sm:items-center justify-center p-4 py-8 overflow-y-auto">
             <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-violet-100 overflow-hidden">
                 <div className="p-8">
                     <div className="text-center mb-8">

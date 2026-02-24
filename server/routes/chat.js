@@ -1,12 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const { buildChatPrompt } = require('../prompts/promptBuilder');
 
 // --- AI Client Initialization ---
-const apiKey = process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY || process.env.API_KEY;
-const genAI = new GoogleGenerativeAI(apiKey);
 
 const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
 let deepseek = null;
@@ -29,13 +26,11 @@ if (claudeApiKey) {
     });
 }
 
-// --- Model Name Mapping ---
+// --- Model Name Mapping (thinking / standard) ---
 const CLAUDE_MODEL_MAP = {
-    'Claude Sonnet': 'claude-sonnet-4-6-thinking',
-    'Claude Opus': 'claude-opus-4-6-thinking',
-    'Claude Sonnet 4.5': 'claude-sonnet-4-5-20250929',
-    'Claude Opus 4.6': 'claude-opus-4-6-20260206',
-    'Claude Haiku 4.5': 'claude-haiku-4-5-20251001'
+    'Claude Sonnet': { thinking: 'claude-sonnet-4-6-thinking', standard: 'claude-sonnet-4-6' },
+    'Claude Opus': { thinking: 'claude-opus-4-6-thinking', standard: 'claude-opus-4-6' },
+    'Claude Haiku': { thinking: 'claude-haiku-4-5-20251001', standard: 'claude-haiku-4-5-20251001' },
 };
 
 // --- Points ---
@@ -213,7 +208,7 @@ router.delete('/messages/:id/after', async (req, res) => {
 // ═══ SSE 串流端點 ═══
 router.post('/stream', async (req, res) => {
     const supabase = req.supabase;
-    const { conversationId, message, imageUrls, model, skipSaveUser, mode } = req.body;
+    const { conversationId, message, imageUrls, model, skipSaveUser, mode, thinking } = req.body;
 
     if (!conversationId || typeof conversationId !== 'string') {
         return res.status(400).json({ error: '無效的對話 ID' });
@@ -284,79 +279,50 @@ router.post('/stream', async (req, res) => {
         // 4. 呼叫 AI（串流）
         const systemMsg = buildChatPrompt(mode || 'auto');
         let fullContent = '';
-        const activeModel = model || 'Google Flash';
+        const activeModel = model || 'Claude Haiku';
 
         if (activeModel.startsWith('Google') || activeModel.startsWith('Gemini')) {
-            // Gemini 串流
-            const modelName = activeModel.includes('Pro') ? 'gemini-2.5-pro-preview-06-05' : 'gemini-2.5-flash';
-            const googleModel = genAI.getGenerativeModel({ model: modelName, systemInstruction: systemMsg });
-
-            // 組裝 Gemini 格式的歷史
-            const geminiHistory = chatHistory.slice(0, -1).map(m => ({
-                role: m.role === 'assistant' ? 'model' : 'user',
-                parts: [{ text: m.content }]
-            }));
-
-            // 處理圖片（最後一條用戶訊息）
-            const lastParts = [{ text: message }];
-            if (hasImages && imageUrls.length > 0) {
-                for (const url of imageUrls) {
-                    const match = url.match(/^data:(.+?);base64,(.+)$/);
-                    if (match) {
-                        lastParts.push({ inlineData: { mimeType: match[1], data: match[2] } });
-                    }
-                }
-            }
-
-            const chat = googleModel.startChat({ history: geminiHistory });
-            const result = await chat.sendMessageStream(lastParts);
-
-            for await (const chunk of result.stream) {
-                const text = chunk.text();
-                if (text) {
-                    fullContent += text;
-                    sendSSE({ token: text });
-                }
-            }
-
-        } else if (activeModel.startsWith('Claude') || CLAUDE_MODEL_MAP[activeModel]) {
+            // Google 模型改用 Claude Haiku
             if (!claude) throw new Error('Claude API Key 未配置');
             const messages = buildOpenAIMessages(systemMsg, chatHistory, hasImages, imageUrls);
-            const claudeModel = CLAUDE_MODEL_MAP[activeModel] || activeModel.toLowerCase().replace(/\s+/g, '-');
+            fullContent = await streamOpenAICompatible({
+                client: claude, model: 'claude-haiku-4-5-20251001', messages, temperature: 0.8, sendSSE
+            });
+
+        } else if (CLAUDE_MODEL_MAP[activeModel] || activeModel.startsWith('Claude')) {
+            if (!claude) throw new Error('Claude API Key 未配置');
+            const messages = buildOpenAIMessages(systemMsg, chatHistory, hasImages, imageUrls);
+            const mapping = CLAUDE_MODEL_MAP[activeModel];
+            const claudeModel = mapping
+                ? (thinking ? mapping.thinking : mapping.standard)
+                : 'claude-haiku-4-5-20251001';
             fullContent = await streamOpenAICompatible({
                 client: claude, model: claudeModel, messages, temperature: 0.8, sendSSE
             });
 
         } else if (activeModel.startsWith('DeepSeek')) {
             if (!deepseek) throw new Error('DeepSeek API Key 未配置');
-            const isR1 = activeModel.includes('R1');
-            const dsModel = isR1 ? 'deepseek-reasoner' : 'deepseek-chat';
+            const dsModel = thinking ? 'deepseek-reasoner' : 'deepseek-chat';
             const messages = [{ role: 'system', content: systemMsg }, ...chatHistory];
             fullContent = await streamOpenAICompatible({
                 client: deepseek, model: dsModel, messages,
-                temperature: isR1 ? undefined : 0.8, sendSSE
+                temperature: thinking ? undefined : 0.8, sendSSE
             });
 
         } else if (activeModel.startsWith('Qwen')) {
             if (!qwen) throw new Error('Qwen API Key 未配置');
-            const qModel = activeModel.includes('Max') ? 'qwen-max' : 'qwen-plus';
+            const qModel = thinking ? 'qwen-max' : 'qwen-plus';
             const messages = [{ role: 'system', content: systemMsg }, ...chatHistory];
             fullContent = await streamOpenAICompatible({
                 client: qwen, model: qModel, messages, temperature: 0.8, sendSSE
             });
         } else {
-            // 預設 Gemini Flash
-            const googleModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: systemMsg });
-            const geminiHistory = chatHistory.slice(0, -1).map(m => ({
-                role: m.role === 'assistant' ? 'model' : 'user',
-                parts: [{ text: m.content }]
-            }));
-            const chat = googleModel.startChat({ history: geminiHistory });
-            const result = await chat.sendMessageStream([{ text: message }]);
-            for await (const chunk of result.stream) {
-                const text = chunk.text();
-                if (text) { fullContent += text; sendSSE({ token: text }); }
-            }
+            // 預設 Claude Haiku
+            if (!claude) throw new Error('Claude API Key 未配置');
+            const messages = buildOpenAIMessages(systemMsg, chatHistory, false, null);
+            fullContent = await streamOpenAICompatible({
+                client: claude, model: 'claude-haiku-4-5-20251001', messages, temperature: 0.8, sendSSE
+            });
         }
 
         // 5. 儲存 assistant 訊息
@@ -402,11 +368,14 @@ router.post('/stream', async (req, res) => {
 
         if (count <= 1) {
             const titlePromise = (async () => {
-                const titleModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-                const titleResult = await titleModel.generateContent(
-                    `根據以下用戶訊息，生成一個 5-10 字的繁體中文對話標題，只輸出標題文字，不要引號或其他符號：\n\n${message}`
-                );
-                const autoTitle = titleResult.response.text().trim().slice(0, 30);
+                const titleClient = claude || deepseek || qwen;
+                if (!titleClient) throw new Error('No AI client available for title generation');
+                const titleResult = await titleClient.chat.completions.create({
+                    model: claude ? 'claude-haiku-4-5-20251001' : (deepseek ? 'deepseek-chat' : 'qwen-plus'),
+                    messages: [{ role: 'user', content: `根據以下用戶訊息，生成一個 5-10 字的繁體中文對話標題，只輸出標題文字，不要引號或其他符號：\n\n${message}` }],
+                    max_tokens: 50
+                });
+                const autoTitle = (titleResult.choices[0]?.message?.content || '').trim().slice(0, 30);
                 if (autoTitle) {
                     await supabase.from('chat_conversations')
                         .update({ title: autoTitle })

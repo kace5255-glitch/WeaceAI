@@ -84,6 +84,7 @@ export interface StreamChatParams {
   model: string;
   skipSaveUser?: boolean;
   mode?: ChatMode;
+  thinking?: boolean;
 }
 
 export async function streamChat(

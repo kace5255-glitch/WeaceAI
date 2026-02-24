@@ -3,7 +3,7 @@ require('dotenv').config(); // also load server/.env
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+
 const rateLimit = require('express-rate-limit');
 const { matchGenre, getUniversalRulesText, getGenreRulesText, getStyleRulesText, getAntiAIRulesText, getOutlineExtra, getCritiqueExtra } = require('./writingRules');
 const { extractChapterMemory, saveExtractedMemory, getSmartContext } = require('./memoryEngine');
@@ -59,7 +59,6 @@ if (supabaseUrl && supabaseServiceKey) {
     console.warn("WARNING: Supabase URL or keys missing. Auth features will fail.");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
 
 // Initialize DeepSeek (OpenAI compatible API)
 const OpenAI = require('openai');
@@ -367,12 +366,6 @@ const buildPrompt = (params) => {
     return buildSystemPrompt(params) + '\n\n---\n\n' + buildUserPrompt(params);
 };
 
-const getGoogleModelName = (modelSelection) => {
-    const m = (modelSelection || '').toLowerCase();
-    if (m.includes('pro')) return 'gemini-2.5-pro-preview-06-05';
-    if (m.includes('2.5')) return 'gemini-2.5-flash';
-    return 'gemini-2.5-flash';
-};
 
 app.post('/api/generate', async (req, res) => {
     try {
@@ -390,15 +383,16 @@ app.post('/api/generate', async (req, res) => {
         let content = "";
 
         if (modelSelection.startsWith('Google')) {
-            const googleModel = genAI.getGenerativeModel({
-                model: getGoogleModelName(modelSelection),
-                systemInstruction: systemPrompt
+            if (!claude) throw new Error("Claude API Key not configured.");
+            const response = await claude.chat.completions.create({
+                model: 'claude-haiku-4-5-20251001',
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: temperature
             });
-            const result = await googleModel.generateContent({
-                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                generationConfig: { temperature: temperature }
-            });
-            content = result.response.text();
+            content = response.choices[0].message.content;
         } else if (modelSelection === 'DeepSeek R1' || modelSelection === 'DeepSeek V3.2') {
             const response = await claude.chat.completions.create({
                 model: 'claude-sonnet-4-6',
@@ -552,15 +546,16 @@ app.post('/api/worldview', async (req, res) => {
         const temperature = 0.8;
 
         if (modelSelection.startsWith('Google') || modelSelection.startsWith('Gemini')) {
-            const googleModel = genAI.getGenerativeModel({
-                model: getGoogleModelName(modelSelection),
-                systemInstruction: systemPrompt
+            if (!claude) throw new Error("Claude API Key not configured.");
+            const response = await claude.chat.completions.create({
+                model: 'claude-haiku-4-5-20251001',
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature
             });
-            const result = await googleModel.generateContent({
-                contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-                generationConfig: { temperature }
-            });
-            content = result.response.text();
+            content = response.choices[0].message.content;
         } else if (modelSelection.startsWith('DeepSeek') || modelSelection === 'DeepSeek R1') {
             const response = await claude.chat.completions.create({
                 model: 'claude-sonnet-4-6',
@@ -1319,9 +1314,13 @@ ${chapter.content ? chapter.content.slice(-2000) : "(尚無內容)"}
         const outlineExtra = genreCategory ? getOutlineExtra(genreCategory) : '';
         const finalPrompt = outlineExtra ? prompt + `\n\n【${genreCategory}大綱重點】\n${outlineExtra}` : prompt;
 
-        const model = genAI.getGenerativeModel({ model: getGoogleModelName(modelSelection) });
-        const result = await model.generateContent(finalPrompt);
-        res.json({ content: result.response.text() });
+        const model = claude;
+        if (!model) throw new Error("Claude API Key not configured.");
+        const response = await model.chat.completions.create({
+            model: 'claude-haiku-4-5-20251001',
+            messages: [{ role: "user", content: finalPrompt }]
+        });
+        res.json({ content: response.choices[0].message.content });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1363,13 +1362,17 @@ app.post('/api/character', async (req, res) => {
             const raw = response.choices[0].message.content;
             resultData = JSON.parse(raw.replace(/```json\n?|```/g, '').trim());
         } else if (modelSelection.startsWith('Google')) {
-            const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-            const prompt = `根據描述創建角色卡JSON: ${description}`;
-            const result = await model.generateContent({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: 'application/json' }
+            if (!claude) throw new Error("Claude API Key not configured.");
+            const charPrompt = `根據描述創建角色卡JSON: ${description}\n\n請嚴格以 JSON 格式返回，包含：name, gender, role, traits, status, level。使用繁體中文。`;
+            const response = await claude.chat.completions.create({
+                model: 'claude-haiku-4-5-20251001',
+                messages: [
+                    { role: "system", content: "你是一位資深小說設定集編輯，擅長將零散描述轉化為結構化的角色檔案。只輸出 JSON，不要其他文字。" },
+                    { role: "user", content: charPrompt }
+                ]
             });
-            resultData = JSON.parse(result.response.text());
+            const raw = response.choices[0].message.content;
+            resultData = JSON.parse(raw.replace(/```json\n?|```/g, '').trim());
         } else {
             throw new Error(`Unsupported model for character creation: ${modelSelection}`);
         }

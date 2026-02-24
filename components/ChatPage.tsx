@@ -14,6 +14,7 @@ export const ChatPage: React.FC<Props> = ({ onBack, theme, toggleTheme }) => {
   const {
     conversations, activeConvId, messages, isStreaming, isLoadingMessages,
     streamingContent, selectedModel, setSelectedModel, chatMode, setChatMode,
+    thinking, setThinking,
     loadConversations, selectConversation, createConversation,
     deleteConv, renameConv, togglePin, sendMessage, stopStreaming,
     regenerate, editAndResend
@@ -96,6 +97,8 @@ export const ChatPage: React.FC<Props> = ({ onBack, theme, toggleTheme }) => {
           onModelChange={setSelectedModel}
           chatMode={chatMode}
           onModeChange={setChatMode}
+          thinking={thinking}
+          onThinkingChange={setThinking}
           onSend={sendMessage}
           onStop={stopStreaming}
           onRegenerate={regenerate}

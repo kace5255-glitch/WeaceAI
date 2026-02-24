@@ -1,19 +1,24 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Bot, ChevronDown } from 'lucide-react';
+import { Bot, ChevronDown, Lightbulb } from 'lucide-react';
 import { ChatMessage as ChatMessageType, ChatMode } from '../../types';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput, AttachedFile } from './ChatInput';
 
 const MODELS = [
-  'Google Flash',
-  'Google Pro',
-  'DeepSeek R1',
-  'DeepSeek V3.2',
+  'Claude Haiku',
   'Claude Sonnet',
   'Claude Opus',
-  'Qwen3-Max',
-  'Qwen3-Plus',
+  'DeepSeek',
+  'Qwen3',
 ];
+
+const THINKING_SUPPORTED: Record<string, boolean> = {
+  'Claude Haiku': false,
+  'Claude Sonnet': true,
+  'Claude Opus': true,
+  'DeepSeek': true,
+  'Qwen3': true,
+};
 
 const MODES: { value: ChatMode; label: string }[] = [
   { value: 'auto', label: '自動' },
@@ -31,6 +36,8 @@ interface Props {
   onModelChange: (model: string) => void;
   chatMode: ChatMode;
   onModeChange: (mode: ChatMode) => void;
+  thinking: boolean;
+  onThinkingChange: (thinking: boolean) => void;
   onSend: (content: string, imageUrls?: string[], files?: AttachedFile[]) => void;
   onStop: () => void;
   onRegenerate?: (messageId: string) => void;
@@ -41,7 +48,7 @@ interface Props {
 
 export const ChatMessageArea: React.FC<Props> = ({
   messages, streamingContent, isStreaming, selectedModel,
-  onModelChange, chatMode, onModeChange, onSend, onStop, onRegenerate, onEditResend, conversationTitle, isLoadingMessages
+  onModelChange, chatMode, onModeChange, thinking, onThinkingChange, onSend, onStop, onRegenerate, onEditResend, conversationTitle, isLoadingMessages
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -90,6 +97,24 @@ export const ChatMessageArea: React.FC<Props> = ({
           >
             {MODELS.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
+          <button
+            onClick={() => THINKING_SUPPORTED[selectedModel] && onThinkingChange(!thinking)}
+            disabled={!THINKING_SUPPORTED[selectedModel]}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              thinking && THINKING_SUPPORTED[selectedModel]
+                ? 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 ring-1 ring-violet-400 dark:ring-violet-600'
+                : THINKING_SUPPORTED[selectedModel]
+                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
+                  : 'bg-gray-50 dark:bg-gray-800/50 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-100 dark:border-gray-800'
+            }`}
+            title={THINKING_SUPPORTED[selectedModel] ? '深度思考模式' : '此模型不支援深度思考'}
+          >
+            <Lightbulb className="w-3.5 h-3.5" />
+            深度思考
+            {thinking && THINKING_SUPPORTED[selectedModel] && (
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+            )}
+          </button>
         </div>
       </div>
 
