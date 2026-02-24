@@ -17,6 +17,10 @@ dist-ssr
 server/.env
 server/.env.*
 
+# Debug/admin scripts with hardcoded keys
+debug-critique-cache.js
+server/updateAdminV2.js
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
