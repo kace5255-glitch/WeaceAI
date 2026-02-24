@@ -88,7 +88,16 @@ export const AuthPage: React.FC = () => {
                     }
                 }
 
-                setMessage({ type: 'success', text: '註冊成功！請檢查您的信箱以驗證帳號。' });
+                // 註冊後自動登入（跳過 email 驗證）
+                const { error: signInError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+                if (signInError) {
+                    // 如果自動登入失敗（例如 Supabase 強制驗證），顯示提示
+                    setMessage({ type: 'success', text: '註冊成功！請檢查您的信箱以驗證帳號。' });
+                }
+                // 登入成功會由 onAuthStateChange 自動跳轉
             } else {
                 // 登入邏輯：支持用戶名或郵箱登入
                 let loginEmail = loginIdentifier;
