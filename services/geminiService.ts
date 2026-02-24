@@ -142,15 +142,18 @@ export const generateCharacterProfile = async (settings: any, description: strin
     }
 };
 
-export const generateChapterBriefing = async (content: string, title: string, model: string): Promise<string> => {
+export const generateChapterBriefing = async (
+    content: string, title: string, model: string,
+    memoryParams?: { chapterId: string; chapterIndex: number; novelId: string; existingCharacters: { name: string; role: string; level?: string }[]; novelTitle: string; genre: string; customLevels?: string[] }
+): Promise<{ content: string; extracted: any | null }> => {
     try {
         const headers = await getAuthHeaders();
         const response = await fetch(`${API_BASE_URL}/briefing`, {
             method: 'POST',
             headers: headers,
-            body: JSON.stringify({ content, title, model })
+            body: JSON.stringify({ content, title, model, ...memoryParams })
         });
-        
+
         if (!response.ok) {
             let errorMessage = `Server Error: ${response.status}`;
             try {
@@ -164,14 +167,14 @@ export const generateChapterBriefing = async (content: string, title: string, mo
             }
             throw new Error(errorMessage);
         }
-        
+
         const text = await response.text();
         if (!text) {
             throw new Error('Empty response from server');
         }
-        
+
         const data = JSON.parse(text);
-        return data.content || '';
+        return { content: data.content || '', extracted: data.extracted || null };
     } catch (e: any) {
         throw new Error(e.message || "無法生成簡報");
     }
@@ -279,4 +282,42 @@ export const generateWorldview = async (prompt: string, model?: string): Promise
     } catch (e: any) {
         throw new Error(e.message || "無法生成世界觀");
     }
+};
+
+// AI味檢測
+export const checkAiTaste = async (content: string): Promise<{
+    score: number;
+    summary: string;
+    issues: { text: string; reason: string; fix: string }[];
+}> => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/ai-taste-check`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content })
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: `Server Error: ${response.status}` }));
+        throw new Error(err.error || `Server Error: ${response.status}`);
+    }
+    return response.json();
+};
+
+// 去AI味改寫
+export const rewriteAntiAi = async (
+    content: string,
+    issues: { text: string; reason: string; fix: string }[]
+): Promise<string> => {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/ai-taste-rewrite`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content, issues })
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: `Server Error: ${response.status}` }));
+        throw new Error(err.error || `Server Error: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.content || '';
 };

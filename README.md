@@ -16,7 +16,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1KWa-hVYjNh48KcfBx5Txx7
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the backend server:
-   `cd server && node index.js`
+   `cd server; node index.js`
 4. Run the frontend:
    `npm run dev`
 

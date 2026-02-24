@@ -2,315 +2,430 @@ const express = require('express');
 const router = express.Router();
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
+const { buildChatPrompt } = require('../prompts/promptBuilder');
 
-// --- Configuration & Initialization ---
+// --- AI Client Initialization ---
 const apiKey = process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY || process.env.API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// DeepSeek Client (Reasoning/Logic/Briefing)
 const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
 let deepseek = null;
 if (deepseekApiKey) {
-    deepseek = new OpenAI({
-        apiKey: deepseekApiKey,
-        baseURL: 'https://api.deepseek.com'
-    });
+    deepseek = new OpenAI({ apiKey: deepseekApiKey, baseURL: 'https://api.deepseek.com' });
 }
 
-// Qwen Client (Production/Creative Writing)
 const qwenApiKey = process.env.QWEN_API_KEY;
 let qwen = null;
 if (qwenApiKey) {
-    qwen = new OpenAI({
-        apiKey: qwenApiKey,
-        baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'
+    qwen = new OpenAI({ apiKey: qwenApiKey, baseURL: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1' });
+}
+
+const claudeApiKey = process.env.CLAUDE_API_KEY;
+let claude = null;
+if (claudeApiKey) {
+    claude = new OpenAI({
+        apiKey: claudeApiKey,
+        baseURL: process.env.CLAUDE_BASE_URL || 'https://api.penguinsaichat.dpdns.org/v1'
     });
 }
 
-// --- Helper Functions ---
+// --- Model Name Mapping ---
+const CLAUDE_MODEL_MAP = {
+    'Claude Sonnet': 'claude-sonnet-4-6-thinking',
+    'Claude Opus': 'claude-opus-4-6-thinking',
+    'Claude Sonnet 4.5': 'claude-sonnet-4-5-20250929',
+    'Claude Opus 4.6': 'claude-opus-4-6-20260206',
+    'Claude Haiku 4.5': 'claude-haiku-4-5-20251001'
+};
 
-// 1. Context Builder: The "Smart Memory" Core
-// Fetches S-Level (Critical), A-Level (Volume), and Recent Briefings
-async function buildChatContext(supabase, novelId, currentChapterId, mode = 'standard') {
-    let context = "";
+// --- Points ---
+const CHAT_POINTS = { chat: 3, chat_image: 5 };
 
-    // Safety check: if no novelId, return empty context
-    if (!novelId) return "";
+// --- Helper: model supports images ---
+const supportsImages = (model) => {
+    const m = (model || '').toLowerCase();
+    return m.includes('google') || m.includes('gemini') || m.includes('claude');
+};
+
+// --- Helper: build OpenAI-compatible messages with optional image support ---
+function buildOpenAIMessages(systemMsg, chatHistory, hasImages, imageUrls) {
+    const messages = [{ role: 'system', content: systemMsg }, ...chatHistory];
+    if (hasImages && imageUrls && imageUrls.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        const contentParts = [{ type: 'text', text: lastMsg.content }];
+        for (const url of imageUrls) {
+            contentParts.push({ type: 'image_url', image_url: { url } });
+        }
+        messages[messages.length - 1] = { role: 'user', content: contentParts };
+    }
+    return messages;
+}
+
+// --- Helper: stream from OpenAI-compatible API ---
+async function streamOpenAICompatible({ client, model, messages, temperature, sendSSE }) {
+    const params = { model, messages, stream: true };
+    if (temperature !== undefined) params.temperature = temperature;
+    const stream = await client.chat.completions.create(params);
+    let fullContent = '';
+    for await (const chunk of stream) {
+        const text = chunk.choices?.[0]?.delta?.content;
+        if (text) {
+            fullContent += text;
+            sendSSE({ token: text });
+        }
+    }
+    return fullContent;
+}
+// ═══ CRUD 端點 ═══
+
+// GET /conversations — 取得用戶所有對話
+router.get('/conversations', async (req, res) => {
+    try {
+        const supabase = req.supabase;
+        const { data, error } = await supabase
+            .from('chat_conversations')
+            .select('*')
+            .eq('user_id', req.user.id)
+            .order('pinned', { ascending: false })
+            .order('updated_at', { ascending: false });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /conversations — 新建對話
+router.post('/conversations', async (req, res) => {
+    try {
+        const supabase = req.supabase;
+        const { title, model } = req.body || {};
+        const { data, error } = await supabase
+            .from('chat_conversations')
+            .insert({
+                user_id: req.user.id,
+                title: title || '新對話',
+                model: model || 'Google Flash'
+            })
+            .select()
+            .single();
+        if (error) throw error;
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// PATCH /conversations/:id — 更新對話
+router.patch('/conversations/:id', async (req, res) => {
+    try {
+        const supabase = req.supabase;
+        const updates = {};
+        if (req.body.title !== undefined) updates.title = req.body.title;
+        if (req.body.pinned !== undefined) updates.pinned = req.body.pinned;
+        if (req.body.model !== undefined) updates.model = req.body.model;
+        updates.updated_at = new Date().toISOString();
+
+        const { error } = await supabase
+            .from('chat_conversations')
+            .update(updates)
+            .eq('id', req.params.id)
+            .eq('user_id', req.user.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// DELETE /conversations/:id — 刪除對話
+router.delete('/conversations/:id', async (req, res) => {
+    try {
+        const supabase = req.supabase;
+        const { error } = await supabase
+            .from('chat_conversations')
+            .delete()
+            .eq('id', req.params.id)
+            .eq('user_id', req.user.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /conversations/:id/messages — 取得對話訊息
+router.get('/conversations/:id/messages', async (req, res) => {
+    try {
+        const supabase = req.supabase;
+        const { data, error } = await supabase
+            .from('chat_messages')
+            .select('*')
+            .eq('conversation_id', req.params.id)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// DELETE /messages/:id — 刪除指定訊息
+router.delete('/messages/:id', async (req, res) => {
+    try {
+        const supabase = req.supabase;
+        const { error } = await supabase
+            .from('chat_messages')
+            .delete()
+            .eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// DELETE /messages/:id/after — 刪除指定訊息之後的所有訊息
+router.delete('/messages/:id/after', async (req, res) => {
+    try {
+        const supabase = req.supabase;
+        // 先取得該訊息的 created_at
+        const { data: msg, error: fetchErr } = await supabase
+            .from('chat_messages')
+            .select('conversation_id, created_at')
+            .eq('id', req.params.id)
+            .single();
+        if (fetchErr) throw fetchErr;
+
+        // 刪除該對話中 created_at > 該訊息的所有訊息
+        const { error } = await supabase
+            .from('chat_messages')
+            .delete()
+            .eq('conversation_id', msg.conversation_id)
+            .gt('created_at', msg.created_at);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ═══ SSE 串流端點 ═══
+router.post('/stream', async (req, res) => {
+    const supabase = req.supabase;
+    const { conversationId, message, imageUrls, model, skipSaveUser, mode } = req.body;
+
+    if (!conversationId || typeof conversationId !== 'string') {
+        return res.status(400).json({ error: '無效的對話 ID' });
+    }
+    if (!message || typeof message !== 'string' || message.length > 50000) {
+        return res.status(400).json({ error: '訊息內容無效或超過長度限制' });
+    }
+
+    // SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    const sendSSE = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+    // SSE 心跳（防止連線超時）
+    const heartbeat = setInterval(() => {
+        try { res.write(`data: ${JSON.stringify({ heartbeat: true })}\n\n`); } catch {}
+    }, 15000);
+    req.on('close', () => clearInterval(heartbeat));
 
     try {
-        // A. Load S-Level (Critical Global) Briefings
-        // These are the "Core Mysteries" or "Main Plot Points" that must never be forgotten.
-        const { data: sBriefings } = await supabase
-            .from('chapter_briefings')
-            .select(`
-                content, 
-                chapters:chapter_id (title, volume_id)
-            `)
-            .eq('priority_level', 'S')
-            // Note: In real production, we'd filter by novelId more efficiently. 
-            // Here assuming briefings belong to chapters of the novel.
-            .limit(10); // Safety limit
+        // 1. 點數檢查（不扣除，成功後才扣）
+        const hasImages = imageUrls && imageUrls.length > 0;
+        const pointAction = hasImages ? 'chat_image' : 'chat';
+        const cost = CHAT_POINTS[pointAction];
 
-        if (sBriefings && sBriefings.length > 0) {
-            context += `\n【🔥 核心伏筆與主線記憶 (S-Level)】\n${sBriefings.map(b => `[${b.chapters?.title || '未知章節'}]: ${b.content}`).join('\n')}\n`;
+        // 查詢用戶點數
+        const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('role, daily_points, task_points, permanent_points')
+            .eq('user_id', req.user.id)
+            .maybeSingle();
+
+        const isAdmin = profile?.role === 'admin';
+        if (!isAdmin) {
+            const total = (profile?.daily_points || 0) + (profile?.task_points || 0) + (profile?.permanent_points || 0);
+            if (total < cost) {
+                sendSSE({ error: `點數不足，需要 ${cost} 點，剩餘 ${total} 點` });
+                return res.end();
+            }
         }
 
-        // B. Load A-Level (Current Volume) Briefings
-        if (currentChapterId) {
-            const { data: currentChapter } = await supabase
-                .from('chapters')
-                .select('volume_id, title')
-                .eq('id', currentChapterId)
-                .single();
+        // 2. 儲存用戶訊息（regenerate 時跳過）
+        if (!skipSaveUser) {
+            await supabase.from('chat_messages').insert({
+                conversation_id: conversationId,
+                role: 'user',
+                content: message,
+                image_urls: imageUrls || [],
+                model: model
+            });
+        }
 
-            if (currentChapter?.volume_id) {
-                // Get chapters in current volume first
-                const { data: volChapters } = await supabase.from('chapters').select('id').eq('volume_id', currentChapter.volume_id);
-                const volChapIds = volChapters?.map(c => c.id) || [];
+        // 3. 載入對話歷史（最近 30 條）
+        const { data: history } = await supabase
+            .from('chat_messages')
+            .select('role, content, image_urls')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: true })
+            .limit(30);
 
-                if (volChapIds.length > 0) {
-                    const { data: volumeBriefings } = await supabase
-                        .from('chapter_briefings')
-                        .select('content, priority_level')
-                        .in('chapter_id', volChapIds)
-                        .in('priority_level', ['A', 'B']) // Get A and B for current volume
-                        .limit(20);
+        const chatHistory = (history || []).map(m => ({
+            role: m.role,
+            content: m.content
+        }));
+        // 4. 呼叫 AI（串流）
+        const systemMsg = buildChatPrompt(mode || 'auto');
+        let fullContent = '';
+        const activeModel = model || 'Google Flash';
 
-                    const aLevels = volumeBriefings?.filter(b => b.priority_level === 'A') || [];
+        if (activeModel.startsWith('Google') || activeModel.startsWith('Gemini')) {
+            // Gemini 串流
+            const modelName = activeModel.includes('Pro') ? 'gemini-2.5-pro-preview-06-05' : 'gemini-2.5-flash';
+            const googleModel = genAI.getGenerativeModel({ model: modelName, systemInstruction: systemMsg });
 
-                    if (aLevels.length > 0) {
-                        context += `\n【📖 本卷重要事件 (A-Level)】\n${aLevels.map(b => b.content).join('\n')}\n`;
+            // 組裝 Gemini 格式的歷史
+            const geminiHistory = chatHistory.slice(0, -1).map(m => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }]
+            }));
+
+            // 處理圖片（最後一條用戶訊息）
+            const lastParts = [{ text: message }];
+            if (hasImages && imageUrls.length > 0) {
+                for (const url of imageUrls) {
+                    const match = url.match(/^data:(.+?);base64,(.+)$/);
+                    if (match) {
+                        lastParts.push({ inlineData: { mimeType: match[1], data: match[2] } });
                     }
                 }
             }
 
-            // C. Current Chapter Content (Standard/Detailed Mode)
-            if (mode === 'standard' || mode === 'deep') {
-                const { data: fullChapter } = await supabase
-                    .from('chapters')
-                    .select('content')
-                    .eq('id', currentChapterId)
-                    .single();
+            const chat = googleModel.startChat({ history: geminiHistory });
+            const result = await chat.sendMessageStream(lastParts);
 
-                if (fullChapter?.content) {
-                    const text = fullChapter.content;
-                    const truncated = text.length > 2000 ? `...(前文省略)\n${text.slice(-2000)}` : text;
-                    context += `\n【📍 當前撰寫內容 (片段)】\n${truncated}\n`;
+            for await (const chunk of result.stream) {
+                const text = chunk.text();
+                if (text) {
+                    fullContent += text;
+                    sendSSE({ token: text });
                 }
+            }
+
+        } else if (activeModel.startsWith('Claude') || CLAUDE_MODEL_MAP[activeModel]) {
+            if (!claude) throw new Error('Claude API Key 未配置');
+            const messages = buildOpenAIMessages(systemMsg, chatHistory, hasImages, imageUrls);
+            const claudeModel = CLAUDE_MODEL_MAP[activeModel] || activeModel.toLowerCase().replace(/\s+/g, '-');
+            fullContent = await streamOpenAICompatible({
+                client: claude, model: claudeModel, messages, temperature: 0.8, sendSSE
+            });
+
+        } else if (activeModel.startsWith('DeepSeek')) {
+            if (!deepseek) throw new Error('DeepSeek API Key 未配置');
+            const isR1 = activeModel.includes('R1');
+            const dsModel = isR1 ? 'deepseek-reasoner' : 'deepseek-chat';
+            const messages = [{ role: 'system', content: systemMsg }, ...chatHistory];
+            fullContent = await streamOpenAICompatible({
+                client: deepseek, model: dsModel, messages,
+                temperature: isR1 ? undefined : 0.8, sendSSE
+            });
+
+        } else if (activeModel.startsWith('Qwen')) {
+            if (!qwen) throw new Error('Qwen API Key 未配置');
+            const qModel = activeModel.includes('Max') ? 'qwen-max' : 'qwen-plus';
+            const messages = [{ role: 'system', content: systemMsg }, ...chatHistory];
+            fullContent = await streamOpenAICompatible({
+                client: qwen, model: qModel, messages, temperature: 0.8, sendSSE
+            });
+        } else {
+            // 預設 Gemini Flash
+            const googleModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash', systemInstruction: systemMsg });
+            const geminiHistory = chatHistory.slice(0, -1).map(m => ({
+                role: m.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: m.content }]
+            }));
+            const chat = googleModel.startChat({ history: geminiHistory });
+            const result = await chat.sendMessageStream([{ text: message }]);
+            for await (const chunk of result.stream) {
+                const text = chunk.text();
+                if (text) { fullContent += text; sendSSE({ token: text }); }
             }
         }
 
-        return context;
-    } catch (err) {
-        console.warn("Context build warning:", err.message);
-        return ""; // Fail gracefully
-    }
-}
-
-// 2. System Persona Builder - The "Triple Persona" Logic & 10-15 Point Plot
-function buildSystemPersona(personaType = 'editor') {
-    const baseIdentity = `你是一位兼具「金主讀者」、「白金作者」與「嚴格編輯」三合一身份的超級寫作搭檔。`;
-
-    // Output Contract (The Hard Rules)
-    const outputRules = `
-【輸出規範 (Output Contract)】
-1. 語言：繁體中文 (Traditional Chinese)。
-2. 格式：Markdown 格式，條理分明。不要使用 XML 標籤。
-3. 風格：直白有力，拒絕過度修辭與解釋性廢話。
-`;
-
-    let specificInstruction = "";
-
-    switch (personaType) {
-        case 'editor': // The logic checker
-            specificInstruction = `
-【當前模式：🛡️ 嚴格編輯 (Editor)】
-你的任務是「找碴」與「糾錯」。
-- 檢查邏輯漏洞：角色行為是否符合人設？能力體系是否崩壞？
-- 檢查伏筆閉環：是否有未回收的伏筆？
-- 檢查節奏：是否太拖沓？
-請用犀利、客觀的語氣指出問題，並給出具體修改建議。不要吹捧。`;
-            break;
-
-        case 'muse': // The creative partner
-            specificInstruction = `
-【當前模式：💡 熱情繆思 (Muse/Author)】
-你的任務是「發散」與「共創」。
-- 提供腦洞：給出 3 個以上的劇情走向建議。
-- 優化爽點：建議如何讓這段劇情更「爽」。
-- 豐富細節：補充環境描寫或心理活動。
-語氣要熱情、充滿鼓勵，像個並肩作戰的戰友。`;
-            break;
-
-        case 'reader': // The consumer
-            specificInstruction = `
-【當前模式：🔥 毒舌讀者 (Reader)】
-你的任務是「吐槽」與「反饋」。
-- 使用者體驗：這段我不喜歡，太水了！
-- 期待管理：這裡斷章斷得好，我會想買下一章。
-- 真實感受：主角這裡太聖母了，看了不爽。
-請模仿讀者評論區的真實語氣（包含一些網路用語）。`;
-            break;
-
-        case 'plot_architect': // 10-15 Point Dynamic Plot
-            specificInstruction = `
-【當前模式：🏗️ 劇情架構師 (Plot Architect)】
-你的任務是生成一份「細緻化章節大綱」。
-請嚴格按照以下「10-15 點動態模組」格式輸出，將章節拆解為細緻的情節點。不要只給出 3-5 點，必須拆解到 10 點以上。
-
-常用情節元件庫（請自由組合順序）：
-- 【開場/動機】(引發事件)
-- 【前期準備】(心理/物資)
-- 【行動過程】(潛入細節/戰鬥)
-- 【遭遇障礙】(陣法/守衛/突發狀況)
-- 【應對/反轉】(智取/硬闖/救援)
-- 【高潮/核心】(關鍵時刻/獲得物品)
-- 【環境異象】(世界觀反應/氣氛渲染)
-- 【撤退/結算】(驚險逃離/戰後盤點)
-- 【配角互動】(正面/側面/多人交互)
-- 【結尾/伏筆】(下章預告/懸念)
-
-輸出範例：
-1. 【開場】主角...
-2. 【行動】...
-...
-12. 【結尾】...
-`;
-            break;
-
-        default:
-            specificInstruction = "請靈活運用三種視角，協助作者完成創作。";
-    }
-
-    return `${baseIdentity}\n${outputRules}\n${specificInstruction}`;
-}
-
-// --- API Routes ---
-
-// GET /api/chat/:novelId/history
-router.get('/:novelId/history', async (req, res) => {
-    const { novelId } = req.params;
-    const { limit = 50, before } = req.query;
-    const supabase = req.supabase;
-
-    try {
-        let { data: session } = await supabase.from('chat_sessions').select('id').eq('novel_id', novelId).single();
-        if (!session) {
-            const { data: newSession, error } = await supabase.from('chat_sessions').insert({ novel_id: novelId }).select().single();
-            if (error) throw error;
-            session = newSession;
-        }
-
-        let query = supabase.from('chat_messages').select('*').eq('session_id', session.id).order('created_at', { ascending: false }).limit(parseInt(limit));
-        if (before) query = query.lt('created_at', before);
-
-        const { data: messages, error } = await query;
-        if (error) throw error;
-
-        res.json({ session_id: session.id, messages: messages.reverse() });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /api/chat
-router.post('/', async (req, res) => {
-    const { message, novelId, currentChapterId, model = 'Qwen-Plus', intent = 'chat' } = req.body;
-    const supabase = req.supabase;
-
-    try {
-        // 1. Session Init
-        let { data: session } = await supabase.from('chat_sessions').select('id').eq('novel_id', novelId).single();
-        if (!session) {
-            const { data: newSession } = await supabase.from('chat_sessions').insert({ novel_id: novelId }).select().single();
-            session = newSession;
-        }
-
-        // 2. Determine Persona & Model based on Intent
-        let targetPersona = 'muse';
-        let activeModel = model;
-
-        if (intent === 'plot') {
-            targetPersona = 'plot_architect'; // 10-15 point plot
-            // Plot generation is complex, prefer Strong Logic (Qwen-Max or R1 or GPT-4)
-            if (activeModel === 'DeepSeek V3') activeModel = 'DeepSeek R1';
-        } else if (intent === 'critique') {
-            targetPersona = 'editor';
-            activeModel = 'DeepSeek R1'; // Logic check
-        } else if (intent === 'reader_feedback') {
-            targetPersona = 'reader';
-            activeModel = 'DeepSeek V3'; // Fast feedback
-        }
-
-        // 3. Save User Message
-        await supabase.from('chat_messages').insert({
-            session_id: session.id, role: 'user', content: message,
-            model_used: null, context_mode: intent
-        });
-
-        // 4. Build Context
-        const contextData = await buildChatContext(supabase, novelId, currentChapterId, intent === 'plot' ? 'standard' : 'deep');
-        const systemPrompt = buildSystemPersona(targetPersona);
-
-        const fullPrompt = `
-${systemPrompt}
-
-【參考資料庫 (Briefing Brain)】
-${contextData}
-
-【用戶指令】
-${message}
-`;
-
-        // 5. Model Execution
-        let aiContent = "";
-        let tokensIn = 0, tokensOut = 0;
-
-        if (activeModel.includes('DeepSeek')) {
-            if (!deepseek) throw new Error("DeepSeek Config Missing");
-            const isReasoning = activeModel.includes('R1');
-            const dsModel = isReasoning ? 'deepseek-reasoner' : 'deepseek-chat';
-
-            const response = await deepseek.chat.completions.create({
-                model: dsModel,
-                messages: isReasoning
-                    ? [{ role: 'user', content: fullPrompt }]
-                    : [{ role: 'system', content: systemPrompt }, { role: 'user', content: `Context:\n${contextData}\n\nUser:\n${message}` }],
-                temperature: isReasoning ? undefined : 0.8
-            });
-            aiContent = response.choices[0].message.content;
-            tokensIn = response.usage?.prompt_tokens;
-            tokensOut = response.usage?.completion_tokens;
-
-        } else if (activeModel.startsWith('Qwen')) {
-            if (!qwen) throw new Error("Qwen Config Missing");
-            const response = await qwen.chat.completions.create({
-                model: activeModel === 'Qwen-Max' ? 'qwen-max' : 'qwen-plus',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: `Context:\n${contextData}\n\nQuery:\n${message}` }
-                ]
-            });
-            aiContent = response.choices[0].message.content;
-            tokensIn = response.usage?.total_tokens;
-        } else {
-            const googleModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-            const result = await googleModel.generateContent(fullPrompt);
-            aiContent = result.response.text();
-        }
-
-        // 6. Save AI Response
+        // 5. 儲存 assistant 訊息
         const { data: aiMsg } = await supabase.from('chat_messages').insert({
-            session_id: session.id, role: 'assistant', content: aiContent,
-            model_used: activeModel, context_mode: intent,
-            tokens_input: tokensIn, tokens_output: tokensOut
-        }).select().single();
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: fullContent,
+            model: activeModel
+        }).select('id').single();
 
-        res.json({ message: aiMsg });
+        sendSSE({ done: true, messageId: aiMsg?.id || '' });
 
+        // 6. 成功後扣除點數
+        if (!isAdmin) {
+            const { data: freshProfile } = await supabase
+                .from('user_profiles')
+                .select('daily_points, task_points, permanent_points')
+                .eq('user_id', req.user.id)
+                .maybeSingle();
+            let daily = freshProfile?.daily_points || 0;
+            let task = freshProfile?.task_points || 0;
+            let permanent = freshProfile?.permanent_points || 0;
+            let rem = cost;
+            if (daily > 0) { const d = Math.min(daily, rem); daily -= d; rem -= d; }
+            if (rem > 0 && task > 0) { const d = Math.min(task, rem); task -= d; rem -= d; }
+            if (rem > 0 && permanent > 0) { const d = Math.min(permanent, rem); permanent -= d; rem -= d; }
+            await supabase.from('user_profiles')
+                .update({ daily_points: daily, task_points: task, permanent_points: permanent })
+                .eq('user_id', req.user.id);
+        }
+
+        // 7. 更新 conversation.updated_at
+        await supabase.from('chat_conversations')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', conversationId);
+
+        // 8. 首次對話自動生成標題（3 秒 timeout）
+        const { count } = await supabase
+            .from('chat_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('conversation_id', conversationId)
+            .eq('role', 'user');
+
+        if (count <= 1) {
+            const titlePromise = (async () => {
+                const titleModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+                const titleResult = await titleModel.generateContent(
+                    `根據以下用戶訊息，生成一個 5-10 字的繁體中文對話標題，只輸出標題文字，不要引號或其他符號：\n\n${message}`
+                );
+                const autoTitle = titleResult.response.text().trim().slice(0, 30);
+                if (autoTitle) {
+                    await supabase.from('chat_conversations')
+                        .update({ title: autoTitle })
+                        .eq('id', conversationId);
+                    sendSSE({ titleUpdate: autoTitle });
+                }
+            })().catch(e => console.warn('自動標題生成失敗:', e.message));
+
+            const timeout = new Promise(resolve => setTimeout(resolve, 3000));
+            await Promise.race([titlePromise, timeout]);
+        }
+
+        clearInterval(heartbeat);
+        res.end();
     } catch (error) {
-        console.error("Chat error:", error);
-        res.status(500).json({ error: error.message });
+        clearInterval(heartbeat);
+        console.error('Chat stream error:', error);
+        try { sendSSE({ error: error.message }); } catch {}
+        res.end();
     }
 });
 

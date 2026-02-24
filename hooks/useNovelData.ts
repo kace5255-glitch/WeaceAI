@@ -134,6 +134,13 @@ export const useNovelData = (session: Session | null) => {
                 traits: c.traits, status: c.status || '', level: c.level,
                 faction: c.faction, period: c.period,
                 lifeStatus: c.life_status, race: c.race || '',
+                currentLocation: c.current_location || undefined,
+                currentPowerLevel: c.current_power_level || undefined,
+                currentEmotionalState: c.current_emotional_state || undefined,
+                currentInjuries: c.current_injuries || undefined,
+                currentPossessions: c.current_possessions || undefined,
+                currentRelationships: c.current_relationships || undefined,
+                statusUpdatedAtChapter: c.status_updated_at_chapter || undefined,
             })));
         } else {
             setCharacters([]);
@@ -154,16 +161,27 @@ export const useNovelData = (session: Session | null) => {
 
     // --- 多小說管理 ---
 
-    const createNovel = async (title: string = '未命名小說'): Promise<string | null> => {
+    const createNovel = async (title: string = '未命名小說', initialSettings?: Partial<NovelSettings>): Promise<string | null> => {
         if (!session) return null;
         try {
+            const novelData: any = {
+                user_id: session.user.id,
+                title,
+                genre: initialSettings?.genre || '一般',
+                background: [initialSettings?.worldview, initialSettings?.background].filter(Boolean).join('\n\n') || '',
+            };
+            console.log('[createNovel] inserting:', novelData);
             const { data: newNovel, error } = await supabase
                 .from('novels')
-                .insert([{ user_id: session.user.id, title }])
+                .insert([novelData])
                 .select()
                 .single();
 
-            if (error || !newNovel) throw error;
+            if (error) {
+                console.error('[createNovel] Supabase error:', error);
+                throw error;
+            }
+            if (!newNovel) throw new Error('No data returned');
 
             // 建立預設分卷和章節
             const { data: vol } = await supabase
@@ -180,9 +198,9 @@ export const useNovelData = (session: Session | null) => {
             // 更新小說列表
             await loadNovelsList();
             return newNovel.id;
-        } catch (e) {
+        } catch (e: any) {
             console.error('Create novel error:', e);
-            return null;
+            throw new Error(e?.message || '創建小說時發生錯誤');
         }
     };
 
@@ -197,9 +215,21 @@ export const useNovelData = (session: Session | null) => {
                 if (remaining.length > 0) {
                     await switchNovel(remaining[0].id);
                 } else {
-                    // 沒有小說了，建立新的
-                    const newId = await createNovel('未命名小說');
-                    if (newId) await loadNovelData(newId);
+                    // 沒有小說了，清空狀態
+                    setNovelId(null);
+                    setVolumes([]);
+                    setCharacters([]);
+                    setVocabularies([]);
+                    setMemos([]);
+                    setSettings({
+                        title: '未命名小說',
+                        genre: '一般',
+                        style: '',
+                        tone: '',
+                        background: '',
+                        worldview: '',
+                        systemPersona: ''
+                    });
                 }
             }
         } catch (e) {
@@ -240,7 +270,7 @@ export const useNovelData = (session: Session | null) => {
                 // 1. 載入所有小說列表
                 await loadNovelsList();
 
-                // 2. 找到最近的小說，或建立預設小說
+                // 2. 找到最近的小說
                 const { data: latestNovels, error: novelError } = await supabase
                     .from('novels')
                     .select('id')
@@ -249,12 +279,10 @@ export const useNovelData = (session: Session | null) => {
 
                 if (novelError) throw novelError;
 
-                if (!latestNovels || latestNovels.length === 0) {
-                    const newId = await createNovel('未命名小說');
-                    if (newId) await loadNovelData(newId);
-                } else {
+                if (latestNovels && latestNovels.length > 0) {
                     await loadNovelData(latestNovels[0].id);
                 }
+                // 如果沒有小說，保持空白狀態
             } catch (error) {
                 console.error("Load Error:", error);
             } finally {
@@ -371,19 +399,33 @@ export const useNovelData = (session: Session | null) => {
     };
 
     // Characters
-    const addCharacter = async () => {
+    const addCharacter = async (initial?: Partial<Character>) => {
         if (!novelId) return;
+        const name = initial?.name || '新角色';
+        const role = initial?.role || '配角';
         const tempId = `temp-${Date.now()}`;
-        const newCharStub: Character = { id: tempId, name: '新角色', role: '配角', gender: 'other', traits: '', status: '正常', level: '' };
+        const newCharStub: Character = { id: tempId, name, role, gender: initial?.gender || 'other', traits: initial?.traits || '', status: initial?.status || '正常', level: initial?.level || '' };
         setCharacters(prev => [...prev, newCharStub]);
+
+        const dbInsert: any = { novel_id: novelId, name, role };
+        if (initial?.gender) dbInsert.gender = initial.gender;
+        if (initial?.traits) dbInsert.traits = initial.traits;
+        if (initial?.level) dbInsert.level = initial.level;
+        if (initial?.status) dbInsert.status = initial.status;
+        if (initial?.currentLocation) dbInsert.current_location = initial.currentLocation;
+        if (initial?.currentPowerLevel) dbInsert.current_power_level = initial.currentPowerLevel;
+        if (initial?.currentEmotionalState) dbInsert.current_emotional_state = initial.currentEmotionalState;
+        if (initial?.currentInjuries) dbInsert.current_injuries = initial.currentInjuries;
+        if (initial?.currentPossessions) dbInsert.current_possessions = initial.currentPossessions;
+        if (initial?.statusUpdatedAtChapter) dbInsert.status_updated_at_chapter = initial.statusUpdatedAtChapter;
 
         const { data } = await supabase
             .from('characters')
-            .insert([{ novel_id: novelId, name: '新角色', role: '配角' }])
+            .insert([dbInsert])
             .select().single();
 
         if (data) {
-            setCharacters(prev => prev.map(c => c.id === tempId ? { ...c, id: data.id } : c));
+            setCharacters(prev => prev.map(c => c.id === tempId ? { ...newCharStub, ...initial, id: data.id } : c));
             return data.id;
         }
         return tempId;
@@ -403,6 +445,14 @@ export const useNovelData = (session: Session | null) => {
         if (updates.period !== undefined) dbUpdates.period = updates.period;
         if (updates.lifeStatus !== undefined) dbUpdates.life_status = updates.lifeStatus;
         if (updates.race !== undefined) dbUpdates.race = updates.race;
+        // 動態狀態欄位
+        if (updates.currentLocation !== undefined) dbUpdates.current_location = updates.currentLocation;
+        if (updates.currentPowerLevel !== undefined) dbUpdates.current_power_level = updates.currentPowerLevel;
+        if (updates.currentEmotionalState !== undefined) dbUpdates.current_emotional_state = updates.currentEmotionalState;
+        if (updates.currentInjuries !== undefined) dbUpdates.current_injuries = updates.currentInjuries;
+        if (updates.currentPossessions !== undefined) dbUpdates.current_possessions = updates.currentPossessions;
+        if (updates.currentRelationships !== undefined) dbUpdates.current_relationships = updates.currentRelationships;
+        if (updates.statusUpdatedAtChapter !== undefined) dbUpdates.status_updated_at_chapter = updates.statusUpdatedAtChapter;
 
         if (Object.keys(dbUpdates).length > 0) {
             await supabase.from('characters').update(dbUpdates).eq('id', id);

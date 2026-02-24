@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BookOpen, PenTool, Sparkles, Clock, ChevronRight, Plus,
   FileText, Zap, Home, FolderOpen, Settings, LogOut, Moon, Sun,
   Bot, ListTree, MessageSquareText, Wand2, Globe, BookMarked,
   BarChart3, Flame, Star, ArrowRight, Trash2, Edit3, Check, X, MoreVertical,
-  Search, Bell
+  Search, Bell, Shield
 } from 'lucide-react';
 import { NovelSummary } from '../hooks/useNovelData';
+import { UserProfilePanel } from './UserProfilePanel';
 
 interface HomePageProps {
   onCreateNovel: () => void;
@@ -17,6 +18,8 @@ interface HomePageProps {
   userName?: string;
   userRole?: string;
   userEmail?: string;
+  userId?: string;
+  accessToken?: string;
   stats?: {
     totalWords: number;
     totalChapters: number;
@@ -27,6 +30,8 @@ interface HomePageProps {
   toggleTheme?: () => void;
   onLogout?: () => void;
   onOpenUserSettings?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenChat?: () => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -38,11 +43,15 @@ export const HomePage: React.FC<HomePageProps> = ({
   userName = 'Writer',
   userRole = 'user',
   userEmail = '',
+  userId = '',
+  accessToken = '',
   stats = { totalWords: 0, totalChapters: 0, writingStreak: 0, achievements: 0 },
   theme = 'dark',
   toggleTheme,
   onLogout,
   onOpenUserSettings,
+  onOpenAdmin,
+  onOpenChat,
 }) => {
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -50,6 +59,8 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileAnchorRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -78,6 +89,9 @@ export const HomePage: React.FC<HomePageProps> = ({
 
   const getRoleBadge = (role: string) => {
     if (role === 'admin') return { label: 'Admin', color: 'bg-red-500/20 text-red-400' };
+    if (role === 'senior_tester') return { label: 'Sr.Tester', color: 'bg-emerald-500/20 text-emerald-400' };
+    if (role === 'tester') return { label: 'Tester', color: 'bg-teal-500/20 text-teal-400' };
+    if (role === 'vip') return { label: 'VIP', color: 'bg-amber-500/20 text-amber-400' };
     if (role === 'pro') return { label: 'Pro', color: 'bg-violet-500/20 text-violet-400' };
     return { label: 'Free', color: 'bg-slate-500/20 text-slate-400' };
   };
@@ -87,6 +101,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const navItems = [
     { id: 'home', icon: Home, label: '首頁' },
     { id: 'works', icon: FolderOpen, label: '我的小說' },
+    { id: 'chat', icon: MessageSquareText, label: 'AI 對話' },
     { id: 'tools', icon: Wand2, label: 'AI 工具' },
     { id: 'stats', icon: BarChart3, label: '數據統計' },
   ];
@@ -208,6 +223,9 @@ export const HomePage: React.FC<HomePageProps> = ({
               <p className="text-violet-200/80 text-sm max-w-md">讓 AI 助手陪伴你的創作旅程，開啟今天的寫作靈感</p>
             </div>
             <div className="flex items-center gap-3">
+              <button onClick={onOpenChat} className="flex items-center gap-2 px-5 py-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white text-sm font-medium rounded-xl border border-white/20 transition-all active:scale-95">
+                <MessageSquareText size={16} /> AI 對話
+              </button>
               {novels.length > 0 && (
                 <button onClick={() => onOpenNovel(novels[0].id)} className="flex items-center gap-2 px-5 py-2.5 bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white text-sm font-medium rounded-xl border border-white/20 transition-all active:scale-95">
                   <BookOpen size={16} /> 繼續寫作
@@ -355,7 +373,10 @@ export const HomePage: React.FC<HomePageProps> = ({
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {navItems.map(item => (
-            <button key={item.id} onClick={() => setActiveNav(item.id)}
+            <button key={item.id} onClick={() => {
+              if (item.id === 'chat' && onOpenChat) { onOpenChat(); return; }
+              setActiveNav(item.id);
+            }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 activeNav === item.id
                   ? 'bg-violet-50 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400'
@@ -374,6 +395,11 @@ export const HomePage: React.FC<HomePageProps> = ({
             <button onClick={onOpenUserSettings} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50 hover:text-gray-700 dark:hover:text-gray-300 transition-all">
               <Settings size={18} /> 帳號設定
             </button>
+            {userRole === 'admin' && (
+              <button onClick={onOpenAdmin} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-300 transition-all">
+                <Shield size={18} /> 管理後台
+              </button>
+            )}
           </div>
         </nav>
 
@@ -416,12 +442,24 @@ export const HomePage: React.FC<HomePageProps> = ({
               {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1"></div>
-            <button onClick={onOpenUserSettings} className="flex items-center gap-2.5 pl-1 pr-3 py-1 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-all">
+            <button ref={profileAnchorRef} onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-2.5 pl-1 pr-3 py-1 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-all">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold">
                 {userName.charAt(0).toUpperCase()}
               </div>
               <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{userName}</span>
             </button>
+            <UserProfilePanel
+              isOpen={isProfileOpen}
+              onClose={() => setIsProfileOpen(false)}
+              userName={userName}
+              userEmail={userEmail}
+              userRole={userRole}
+              userId={userId}
+              accessToken={accessToken}
+              onLogout={onLogout || (() => {})}
+              onOpenUserSettings={onOpenUserSettings || (() => {})}
+              anchorRef={profileAnchorRef}
+            />
           </div>
         </div>
 

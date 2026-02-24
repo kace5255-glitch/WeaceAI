@@ -202,7 +202,6 @@ export const WorldviewModal: React.FC<WorldviewModalProps> = ({
                                     <option>Claude Opus 4.6</option>
                                     <option>Qwen3-Max</option>
                                     <option>Qwen3-Plus</option>
-                                    <option>Kimi</option>
                                 </select>
                             </div>
 

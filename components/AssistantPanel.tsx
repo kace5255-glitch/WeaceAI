@@ -624,42 +624,34 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({
                                             <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase mb-1.5 tracking-wider"><span className="w-3.5 h-3.5 rounded-full bg-slate-200 dark:bg-gray-600 flex items-center justify-center text-[8px] text-slate-600 dark:text-gray-300 font-bold">@</span>性格特徵</label>
                                             <input value={char.traits} onChange={(e) => onUpdateCharacter(char.id, { traits: e.target.value })} className="w-full bg-slate-50 dark:bg-gray-700/50 border border-slate-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 dark:text-gray-200 focus:bg-white dark:focus:bg-gray-700 focus:border-violet-300 dark:focus:border-violet-500 focus:ring-2 focus:ring-violet-50 dark:focus:ring-violet-900/20 outline-none transition-all" />
                                         </div>
-                                        <div>
-                                            <div className="flex justify-between items-center mb-1.5">
-                                                <label className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
-                                                    <div className="w-3.5 h-3.5 rounded-full border border-emerald-500 flex items-center justify-center relative">
-                                                        <div className="absolute w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                                                    </div>
-                                                    當前狀態 (Status)
-                                                </label>
-                                                <button
-                                                    onClick={async () => {
-                                                        if (!currentChapter.content.trim()) {
-                                                            alert("請先在編輯器錄入章節內容，以便 AI 進行分析");
-                                                            return;
-                                                        }
-                                                        try {
-                                                            const { updateCharacterProfile } = await import('../services/geminiService');
-                                                            const btn = document.getElementById(`db-ai-update-${char.id}`);
-                                                            if (btn) btn.classList.add('animate-spin');
-
-                                                            const updates = await updateCharacterProfile(currentChapter.content, char, selectedModel);
-                                                            onUpdateCharacter(char.id, updates);
-
-                                                            if (btn) btn.classList.remove('animate-spin');
-                                                        } catch (e) {
-                                                            console.error(e);
-                                                            alert("AI 更新失敗");
-                                                        }
-                                                    }}
-                                                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all text-[10px] font-bold border border-emerald-100 dark:border-emerald-900/30"
-                                                    title={`根據當前章節《${currentChapter.title}》更新`}
-                                                >
-                                                    <Sparkles id={`db-ai-update-${char.id}`} size={10} />
-                                                    AI 更新
-                                                </button>
+                                        {/* 記憶系統動態狀態區塊 */}
+                                        <div className="mt-2 p-2.5 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100/60 dark:border-blue-900/30 rounded-lg">
+                                            <label className="flex items-center gap-1.5 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase mb-2 tracking-wider">
+                                                <div className="w-3.5 h-3.5 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-[8px]">📍</div>
+                                                記憶系統動態{char.statusUpdatedAtChapter ? ` (第${char.statusUpdatedAtChapter}章)` : ''}
+                                            </label>
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-blue-500 dark:text-blue-400 w-10 shrink-0">位置</span>
+                                                    <input value={char.currentLocation || ''} onChange={(e) => onUpdateCharacter(char.id, { currentLocation: e.target.value })} placeholder="—" className="flex-1 text-[11px] bg-transparent border-b border-blue-100 dark:border-blue-900/40 text-blue-700 dark:text-blue-300 outline-none px-1 py-0.5 placeholder-gray-300 dark:placeholder-gray-600" />
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-blue-500 dark:text-blue-400 w-10 shrink-0">實力</span>
+                                                    <input value={char.currentPowerLevel || ''} onChange={(e) => onUpdateCharacter(char.id, { currentPowerLevel: e.target.value })} placeholder="—" className="flex-1 text-[11px] bg-transparent border-b border-blue-100 dark:border-blue-900/40 text-blue-700 dark:text-blue-300 outline-none px-1 py-0.5 placeholder-gray-300 dark:placeholder-gray-600" />
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-blue-500 dark:text-blue-400 w-10 shrink-0">情緒</span>
+                                                    <input value={char.currentEmotionalState || ''} onChange={(e) => onUpdateCharacter(char.id, { currentEmotionalState: e.target.value })} placeholder="—" className="flex-1 text-[11px] bg-transparent border-b border-blue-100 dark:border-blue-900/40 text-blue-700 dark:text-blue-300 outline-none px-1 py-0.5 placeholder-gray-300 dark:placeholder-gray-600" />
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-red-500 dark:text-red-400 w-10 shrink-0">傷勢</span>
+                                                    <input value={char.currentInjuries || ''} onChange={(e) => onUpdateCharacter(char.id, { currentInjuries: e.target.value || null })} placeholder="—" className="flex-1 text-[11px] bg-transparent border-b border-red-100 dark:border-red-900/40 text-red-700 dark:text-red-300 outline-none px-1 py-0.5 placeholder-gray-300 dark:placeholder-gray-600" />
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-amber-500 dark:text-amber-400 w-10 shrink-0">持有</span>
+                                                    <input value={char.currentPossessions || ''} onChange={(e) => onUpdateCharacter(char.id, { currentPossessions: e.target.value || null })} placeholder="—" className="flex-1 text-[11px] bg-transparent border-b border-amber-100 dark:border-amber-900/40 text-amber-700 dark:text-amber-300 outline-none px-1 py-0.5 placeholder-gray-300 dark:placeholder-gray-600" />
+                                                </div>
                                             </div>
-                                            <textarea value={char.status} onChange={(e) => onUpdateCharacter(char.id, { status: e.target.value })} className="w-full bg-emerald-50/40 dark:bg-emerald-900/10 border border-emerald-100/60 dark:border-emerald-900/30 rounded-lg px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300 focus:bg-white dark:focus:bg-gray-800/80 focus:border-emerald-300 dark:focus:border-emerald-700 focus:ring-2 focus:ring-emerald-50 dark:focus:ring-emerald-900/20 outline-none resize-none h-16 leading-relaxed scrollbar-thin scrollbar-thumb-emerald-200 dark:scrollbar-thumb-emerald-900" />
                                         </div>
                                     </div>
                                 ))}
@@ -870,11 +862,10 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({
                                         {/* <option value="Google Pro">Gemini 3 Pro (Exp)</option> */}
                                         <option value="DeepSeek R1">DeepSeek R1</option>
                                         <option value="DeepSeek V3.2">DeepSeek V3.2</option>
-                                        {/* <option value="OpenRouter Sonnet 4.5">Claude Sonnet 4.5</option> */}
-                                        {/* <option value="OpenRouter Opus 4.6">Claude Opus 4.6</option> */}
+                                        <option value="Claude Sonnet">Claude Sonnet 4.6</option>
+                                        <option value="Claude Opus">Claude Opus 4.6</option>
                                         <option value="Qwen3-Max">Qwen3-Max</option>
                                         <option value="Qwen3-Plus">Qwen3-Plus</option>
-                                        {/* <option value="Kimi">Kimi</option> */}
                                     </select>
                                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400 group-hover:text-violet-500 transition-colors">
                                         <ChevronDown size={14} />
@@ -907,85 +898,78 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = ({
                             </div>
                         </div>
 
-                        {/* System Persona Section (New) */}
-                        <div className="space-y-1.5">
-                            <div className="flex justify-between items-center ml-1">
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
-                                    <Bot size={12} /> AI 人設 (System Persona)
-                                </label>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-slate-300">{(settings.systemPersona || '').length}</span>
-                                    <button
-                                        onClick={() => onUpdateSettings({ ...settings, systemPersona: '' })}
-                                        className="text-[9px] text-slate-400 hover:text-red-500 underline"
-                                        title="重置為預設"
-                                    >
-                                        重置
-                                    </button>
-                                </div>
-                            </div>
-                            <textarea
-                                value={settings.systemPersona || ''}
-                                onChange={(e) => onUpdateSettings({ ...settings, systemPersona: e.target.value })}
-                                placeholder="預設：你是一位擁有豐富想像力和精湛文筆的資深小說家..."
-                                className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-750 rounded-xl p-3 text-sm text-slate-800 dark:text-gray-100 h-20 resize-none focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/20 focus:border-violet-400 dark:focus:border-violet-500 placeholder-slate-400 dark:placeholder-gray-500 shadow-sm transition-all"
-                            />
-                        </div>
-
                         {/* Writing Style Section */}
                         <div className="space-y-1.5">
                             <div className="flex justify-between items-center ml-1">
-                                <label className="text-xs font-bold text-slate-600">寫作風格</label>
-                            </div>
-                            <div>
-                                <textarea
-                                    value={settings.style}
-                                    onChange={(e) => onUpdateSettings({ ...settings, style: e.target.value })}
-                                    placeholder="請輸入寫作風格"
-                                    className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-750 rounded-xl p-3 text-sm text-slate-800 dark:text-gray-100 h-20 resize-none focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/20 focus:border-violet-400 dark:focus:border-violet-500 placeholder-slate-400 dark:placeholder-gray-500 shadow-sm transition-all"
-                                />
-                                <div className="text-right mt-1">
-                                    <div className="text-right mt-1">
-                                        <span className="text-[10px] text-slate-300">{settings.style.length}</span>
-                                    </div>
+                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">寫作風格</label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => {
+                                            const isCustom = settings.writingStyleMode === 'custom';
+                                            onUpdateSettings({
+                                                ...settings,
+                                                writingStyleMode: isCustom ? 'preset' : 'custom',
+                                                style: isCustom ? '簡潔明快' : settings.style,
+                                            });
+                                        }}
+                                        className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${settings.writingStyleMode === 'custom' ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400'}`}
+                                    >
+                                        {settings.writingStyleMode === 'custom' ? '✎ 自定義中' : '✎ 自定義'}
+                                    </button>
                                 </div>
                             </div>
+                            {settings.writingStyleMode === 'custom' ? (
+                                <div>
+                                    <textarea
+                                        value={settings.style}
+                                        onChange={(e) => onUpdateSettings({ ...settings, style: e.target.value })}
+                                        placeholder="描述你想要的寫作風格，例如：文筆華麗、善用比喻、節奏緊湊、對話幽默..."
+                                        className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-750 rounded-xl p-3 text-sm text-slate-800 dark:text-gray-100 h-20 resize-none focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/20 focus:border-violet-400 dark:focus:border-violet-500 placeholder-slate-400 dark:placeholder-gray-500 shadow-sm transition-all"
+                                    />
+                                    <div className="text-right mt-1">
+                                        <span className="text-[10px] text-slate-300 dark:text-slate-500">{settings.style.length}</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {[
+                                        { value: '簡潔明快', desc: '精煉有力・快節奏' },
+                                        { value: '華麗細膩', desc: '意境優美・細膩' },
+                                        { value: '幽默吐槽', desc: '輕鬆搞笑・反差' },
+                                        { value: '沉穩厚重', desc: '大氣考究・厚重' },
+                                        { value: '畫面感鏡頭', desc: '電影分鏡・視覺' },
+                                        { value: '口語化直白', desc: '接地氣・自然' },
+                                    ].map((s) => (
+                                        <button
+                                            key={s.value}
+                                            onClick={() => onUpdateSettings({ ...settings, style: s.value })}
+                                            className={`text-left px-3 py-2 rounded-lg border transition-all text-xs ${settings.style === s.value
+                                                ? 'border-violet-400 dark:border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 shadow-sm'
+                                                : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-750 text-slate-600 dark:text-gray-300 hover:border-violet-300 dark:hover:border-violet-600 hover:bg-violet-50/50 dark:hover:bg-violet-900/10'
+                                            }`}
+                                        >
+                                            <div className="font-medium">{s.value}</div>
+                                            <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">{s.desc}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Writing Requirements Section */}
                         <div className="space-y-1.5">
                             <div className="flex justify-between items-center ml-1">
                                 <label className="text-xs font-bold text-slate-600">寫作要求</label>
-                            </div>
-                            <div>
-                                <textarea
-                                    value={writingRequirements}
-                                    onChange={(e) => setWritingRequirements(e.target.value)}
-                                    placeholder="請輸入寫作要求"
-                                    className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-750 rounded-xl p-3 text-sm text-slate-800 dark:text-gray-100 h-20 resize-none focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/20 focus:border-violet-400 dark:focus:border-violet-500 placeholder-slate-400 dark:placeholder-gray-500 shadow-sm transition-all"
-                                />
-                                <div className="text-right mt-1">
-                                    <div className="text-right mt-1">
-                                        <span className="text-[10px] text-slate-300">{writingRequirements.length}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-
-                        {/* Background */}
-                        <div className="space-y-1.5">
-                            <div className="flex justify-between items-center ml-1">
-                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">本章背景</label>
-                                <span className="text-[10px] text-slate-400 bg-white dark:bg-gray-700 px-1.5 py-0.5 rounded-full border border-slate-100 dark:border-gray-600">{settings.background.length}</span>
+                                <span className="text-[10px] text-slate-300">{writingRequirements.length}</span>
                             </div>
                             <textarea
-                                value={settings.background}
-                                onChange={(e) => onUpdateSettings({ ...settings, background: e.target.value })}
-                                placeholder="描述本章發生的地點、天氣、氛圍..."
-                                className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-750 rounded-xl p-3 text-sm text-slate-800 dark:text-gray-100 h-16 resize-none focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/20 focus:border-violet-400 dark:focus:border-violet-500 placeholder-slate-400 shadow-sm transition-all"
+                                value={writingRequirements}
+                                onChange={(e) => setWritingRequirements(e.target.value)}
+                                placeholder="請輸入寫作要求"
+                                className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-750 rounded-xl p-3 text-sm text-slate-800 dark:text-gray-100 h-20 resize-none focus:ring-2 focus:ring-violet-100 dark:focus:ring-violet-900/20 focus:border-violet-400 dark:focus:border-violet-500 placeholder-slate-400 dark:placeholder-gray-500 shadow-sm transition-all"
                             />
                         </div>
+
 
                         {/* Outline */}
                         <div className="space-y-1.5">

@@ -5,15 +5,20 @@ import { Editor } from './components/Editor';
 import { AssistantPanel } from './components/AssistantPanel';
 import { AiReviewModal } from './components/AiReviewModal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { MemoryConfirmModal } from './components/MemoryConfirmModal';
 import { ChapterReviewModal } from './components/ChapterReviewModal';
-import { WorldviewModal } from './components/WorldviewModal';
+import { BackgroundModal } from './components/BackgroundModal';
 import { NovelSettingsModal } from './components/NovelSettingsModal';
 import { UserSettingsModal } from './components/UserSettingsModal';
+import { NovelSetupWizard } from './components/NovelSetupWizard';
 import { HomePage } from './components/HomePage';
+import { AdminDashboard } from './components/AdminDashboard';
+import { ChatPage } from './components/ChatPage';
 import { AuthPage } from './components/AuthPage';
 import { supabase } from './lib/supabase';
-import { generateStoryContent, generateOutline, generateCharacterProfile, generateChapterBriefing, generateCritique, generateWorldview } from './services/geminiService';
-import { Chapter, Character, NovelSettings, Volume, Vocabulary, AIRequestParams, EditorActionType } from './types';
+import { generateStoryContent, generateOutline, generateCharacterProfile, generateChapterBriefing, generateCritique, checkAiTaste, rewriteAntiAi } from './services/geminiService';
+import { getSmartContext, saveConfirmedMemory } from './services/memoryService';
+import { Chapter, Character, NovelSettings, Volume, Vocabulary, AIRequestParams, EditorActionType, MemoryExtractionResult } from './types';
 import { Session } from '@supabase/supabase-js';
 import { useNovelData } from './hooks/useNovelData';
 
@@ -35,15 +40,15 @@ const App: React.FC = () => {
   const [userRole, setUserRole] = useState<string>('user');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // View State - 控制顯示主頁還是編輯器
-  const [currentView, setCurrentView] = useState<'home' | 'editor'>('home');
+  // View State - 控制顯示主頁、編輯器或管理後台
+  const [currentView, setCurrentView] = useState<'home' | 'editor' | 'admin' | 'chat'>('home');
 
   const fetchUserRole = async (userId: string) => {
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('user_profiles')
         .select('role')
-        .eq('id', userId)
+        .eq('user_id', userId)
         .single();
 
       if (data && data.role) {
@@ -84,6 +89,7 @@ const App: React.FC = () => {
   // Hook handles data loading & syncing
   const {
     loading: isDataLoading,
+    novelId,
     novels, createNovel, deleteNovel, switchNovel, renameNovel,
     settings, updateSettings,
     volumes, updateVolume: updateVolumeTitle, addVolume, deleteVolume,
@@ -130,6 +136,11 @@ const App: React.FC = () => {
       setSession(session);
       if (session?.user) {
         fetchUserRole(session.user.id);
+        // 更新最後登入時間
+        fetch('/api/user/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        }).catch(() => {});
       } else {
         setUserRole('user');
       }
@@ -145,6 +156,19 @@ const App: React.FC = () => {
   const [reviewTitle, setReviewTitle] = useState('章節智能簡報');
   const [isReviewLoading, setIsReviewLoading] = useState(false);
   const [reviewAction, setReviewAction] = useState<'briefing' | 'critique'>('briefing');
+
+  // AI味檢測 State
+  const [isAiTasteModalOpen, setIsAiTasteModalOpen] = useState(false);
+  const [aiTasteLoading, setAiTasteLoading] = useState(false);
+  const [aiTasteRewriting, setAiTasteRewriting] = useState(false);
+  const [aiTasteResult, setAiTasteResult] = useState<{ score: number; summary: string; issues: { text: string; reason: string; fix: string }[] } | null>(null);
+
+  // 記憶確認彈窗 State
+  const [memoryConfirmOpen, setMemoryConfirmOpen] = useState(false);
+  const [memoryConfirmData, setMemoryConfirmData] = useState<MemoryExtractionResult | null>(null);
+  const [memoryConfirmChapterIndex, setMemoryConfirmChapterIndex] = useState(1);
+  const [memoryConfirmChapterId, setMemoryConfirmChapterId] = useState('');
+  const [memoryConfirmSaving, setMemoryConfirmSaving] = useState(false);
 
 
   // Confirmation Modal State
@@ -166,12 +190,14 @@ const App: React.FC = () => {
     setConfirmModal(prev => ({ ...prev, isOpen: false }));
   };
 
-  // Worldview Modal State
-  const [isWorldviewOpen, setIsWorldviewOpen] = useState(false);
+  const [isBackgroundOpen, setIsBackgroundOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // User Settings Modal State
   const [isUserSettingsOpen, setIsUserSettingsOpen] = useState(false);
+
+  // Novel Setup Wizard State
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
 
   // Derived state: Find current chapter object
   const currentChapter = useMemo(() => {
@@ -184,15 +210,23 @@ const App: React.FC = () => {
   }, [volumes, currentChapterId]);
 
   // Helper: Get formatted context string from a list of chapters
+  // 前情提要：只取前 1 章的 briefing + 尾段（記憶系統覆蓋全書上下文）
   const buildContextFromChapters = (chapters: Chapter[]): string => {
     if (chapters.length === 0) return "無前情提要。";
-    return chapters.map(chap => {
-      return chap.briefing
-        ? `[${chap.title} 簡報]:\n${chap.briefing}`
-        : chap.outline
-          ? `[${chap.title} 大綱]:\n${chap.outline}`
-          : `[${chap.title} 內容片段]:\n${chap.content.slice(0, 1000)}...`;
-    }).join('\n\n');
+    // 只取最後一章（最接近當前章的）
+    const prevChap = chapters[chapters.length - 1];
+    const parts: string[] = [];
+    if (prevChap.briefing) {
+      parts.push(`[${prevChap.title} 簡報]:\n${prevChap.briefing}`);
+    }
+    if (prevChap.content && prevChap.content.length > 0) {
+      const tail = prevChap.content.slice(-1000);
+      parts.push(`[${prevChap.title} 結尾片段]:\n${tail}`);
+    }
+    if (parts.length === 0 && prevChap.outline) {
+      parts.push(`[${prevChap.title} 大綱]:\n${prevChap.outline}`);
+    }
+    return parts.join('\n');
   };
 
   // Stop Generation Handler
@@ -259,40 +293,56 @@ const App: React.FC = () => {
     const activeCharacters = characters.filter(c => selectedCharIds.includes(c.id));
     const activeVocab = vocabularies.filter(v => selectedVocabIds.includes(v.id));
 
-    // 1. Prepare Reference Chapters
+    // 1. 前情提要：只取前 1 章
     const allChapters = volumes.flatMap(v => v.chapters);
-    let refChapters = allChapters.filter(c => selectedRefChapterIds.includes(c.id));
+    const currentIndex = allChapters.findIndex(c => c.id === currentChapter.id);
+    let prevChapter: Chapter | null = currentIndex > 0 ? allChapters[currentIndex - 1] : null;
 
-    // 2. Intelligent Context: Check for missing briefings and generate on-the-fly
-    const chaptersNeedingBriefing = refChapters.filter(c => !c.briefing && c.content && c.content.length > 50);
-
-    if (chaptersNeedingBriefing.length > 0) {
+    // 如果前一章缺 briefing，自動生成
+    if (prevChapter && !prevChapter.briefing && prevChapter.content && prevChapter.content.length > 50) {
       try {
-        const newBriefingsData = await Promise.all(chaptersNeedingBriefing.map(async (c) => {
-          const briefing = await generateChapterBriefing(c.content, c.title, model);
-          return { id: c.id, briefing };
-        }));
-
-        // Update local state and DB via hook
-        newBriefingsData.forEach(nb => {
-          updateChapter(nb.id, { briefing: nb.briefing });
-        });
-
-        // Update local ref list for this call
-        refChapters = refChapters.map(c => {
-          const update = newBriefingsData.find(nb => nb.id === c.id);
-          return update ? { ...c, briefing: update.briefing } : c;
-        });
-
+        const result = await generateChapterBriefing(prevChapter.content, prevChapter.title, model,
+          novelId ? {
+            chapterId: prevChapter.id,
+            chapterIndex: currentIndex - 1,
+            novelId,
+            existingCharacters: characters.map(c => ({ name: c.name, role: c.role, level: c.level })),
+            novelTitle: settings.title,
+            genre: settings.genre,
+            customLevels: settings.customLevels
+          } : undefined
+        );
+        updateChapter(prevChapter.id, { briefing: result.content });
+        prevChapter = { ...prevChapter, briefing: result.content };
+        // 自動生成的 briefing 也提取了記憶，靜默儲存（不彈窗）
+        if (result.extracted && novelId) {
+          saveConfirmedMemory({
+            novelId, chapterId: prevChapter.id,
+            chapterIndex: currentIndex - 1, extracted: result.extracted
+          }).catch(e => console.error("Auto memory save failed:", e.message));
+        }
       } catch (e) {
-        console.error("Auto-generation of briefings failed, proceeding with raw content.", e);
+        console.error("Auto-generation of briefing failed.", e);
       }
     }
 
-    // 3. Build Context
-    const storyContext = refChapters.length > 0
-      ? buildContextFromChapters(refChapters)
-      : "未選擇參考章節 (無前情提要)";
+    const storyContext = prevChapter
+      ? buildContextFromChapters([prevChapter])
+      : "無前情提要。";
+
+    // 2. 智能上下文（記憶系統）
+    let memoryContext: any = {};
+    if (novelId) {
+      try {
+        memoryContext = await getSmartContext({
+          novelId,
+          currentChapterIndex: currentIndex + 1,
+          selectedCharacterNames: activeCharacters.map(c => c.name)
+        });
+      } catch (e) {
+        console.error("Failed to get smart context, proceeding without memory.", e);
+      }
+    }
 
     const params: AIRequestParams = {
       chapter: currentChapter,
@@ -303,6 +353,7 @@ const App: React.FC = () => {
       requirements: requirements,
       relations: relations,
       previousContext: storyContext,
+      memoryContext: memoryContext,
       model: model,
       temperature: temperature
     };
@@ -320,9 +371,32 @@ const App: React.FC = () => {
     setReviewTitle('章節智能簡報');
     setReviewAction('briefing');
     try {
-      const briefing = await generateChapterBriefing(currentChapter.content, currentChapter.title, "Gemini 2.5");
-      setReviewContent(briefing);
-      updateChapter(currentChapter.id, { briefing: briefing });
+      // 計算當前章節序號
+      const allChapters = volumes.flatMap(v => v.chapters);
+      const chapterIndex = allChapters.findIndex(c => c.id === currentChapter.id) + 1;
+
+      const result = await generateChapterBriefing(
+        currentChapter.content, currentChapter.title, "Gemini 2.5",
+        novelId ? {
+          chapterId: currentChapter.id,
+          chapterIndex,
+          novelId,
+          existingCharacters: characters.map(c => ({ name: c.name, role: c.role, level: c.level })),
+          novelTitle: settings.title,
+          genre: settings.genre,
+          customLevels: settings.customLevels
+        } : undefined
+      );
+      setReviewContent(result.content);
+      updateChapter(currentChapter.id, { briefing: result.content });
+
+      // 如果有提取到記憶，彈出確認面板
+      if (result.extracted && novelId) {
+        setMemoryConfirmData(result.extracted);
+        setMemoryConfirmChapterIndex(chapterIndex);
+        setMemoryConfirmChapterId(currentChapter.id);
+        setMemoryConfirmOpen(true);
+      }
     } catch (e: any) {
       setReviewContent(getFriendlyErrorMessage(e));
     } finally {
@@ -407,6 +481,26 @@ const App: React.FC = () => {
 
   const handleAiAction = async (action: EditorActionType) => {
     if (!currentChapter) return;
+
+    if (action === 'ai-taste') {
+      if (!currentChapter.content || currentChapter.content.length < 50) {
+        alert("章節內容過少，無法檢測AI味。");
+        return;
+      }
+      setAiTasteResult(null);
+      setAiTasteLoading(true);
+      setIsAiTasteModalOpen(true);
+      try {
+        const result = await checkAiTaste(currentChapter.content);
+        setAiTasteResult(result);
+      } catch (error: any) {
+        alert(`AI味檢測失敗：${error.message}`);
+        setIsAiTasteModalOpen(false);
+      } finally {
+        setAiTasteLoading(false);
+      }
+      return;
+    }
 
     if (action === 'briefing') {
       setIsReviewModalOpen(true);
@@ -529,14 +623,64 @@ const App: React.FC = () => {
 
   const handleAcceptAiContent = (finalContent: string) => {
     if (!currentChapter) return;
+
+    // 解析 AI 生成的章節標題（格式：【章節標題：XXX】）
+    let content = finalContent;
+    let newTitle: string | undefined;
+    const titleMatch = content.match(/【章節標題[：:](.{2,8})】/);
+    if (titleMatch) {
+      const aiTitle = titleMatch[1].trim();
+      // 移除標題行
+      content = content.replace(/【章節標題[：:].{2,8}】\n?/, '').trimStart();
+
+      // 計算當前章節是第幾章
+      const allChapters = volumes.flatMap(v => v.chapters);
+      const chapterIndex = allChapters.findIndex(c => c.id === currentChapter.id);
+      const chapterNum = chapterIndex >= 0 ? chapterIndex + 1 : 1;
+      const numMap = ['一','二','三','四','五','六','七','八','九','十',
+        '十一','十二','十三','十四','十五','十六','十七','十八','十九','二十',
+        '二十一','二十二','二十三','二十四','二十五','二十六','二十七','二十八','二十九','三十',
+        '三十一','三十二','三十三','三十四','三十五','三十六','三十七','三十八','三十九','四十',
+        '四十一','四十二','四十三','四十四','四十五','四十六','四十七','四十八','四十九','五十'];
+      const chapterNumStr = chapterNum <= 50 ? numMap[chapterNum - 1] : String(chapterNum);
+      newTitle = `第${chapterNumStr}章 ${aiTitle}`;
+
+      // 只在章節標題是默認值時才更新
+      if (!currentChapter.title.match(/^(第.+章|新章節|Chapter|未命名)/) && currentChapter.title.trim()) {
+        newTitle = undefined;
+      }
+    }
+
     const separator = currentChapter.content ? '\n\n' : '';
-    updateChapter(currentChapter.id, { content: currentChapter.content + separator + finalContent });
+    const updates: Partial<typeof currentChapter> = {
+      content: currentChapter.content + separator + content,
+    };
+    if (newTitle) {
+      updates.title = newTitle;
+    }
+    updateChapter(currentChapter.id, updates);
     setPendingAiContent(null);
   };
 
   const handleRegenerate = async () => {
     if (lastGenParams) {
       await performGeneration(lastGenParams);
+    }
+  };
+
+  // AI味改寫 Handler
+  const handleAiTasteRewrite = async () => {
+    if (!currentChapter || !currentChapter.content || !aiTasteResult) return;
+    setAiTasteRewriting(true);
+    try {
+      const rewritten = await rewriteAntiAi(currentChapter.content, aiTasteResult.issues);
+      updateChapter(currentChapter.id, { content: rewritten });
+      setIsAiTasteModalOpen(false);
+      setAiTasteResult(null);
+    } catch (error: any) {
+      alert(`去AI味改寫失敗：${error.message}`);
+    } finally {
+      setAiTasteRewriting(false);
     }
   };
 
@@ -597,6 +741,28 @@ const App: React.FC = () => {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">Loading Novel Data...</div>;
   }
 
+  // 管理後台視圖
+  if (currentView === 'admin' && userRole === 'admin') {
+    return (
+      <AdminDashboard
+        onBack={() => setCurrentView('home')}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
+
+  // AI 對話視圖
+  if (currentView === 'chat') {
+    return (
+      <ChatPage
+        onBack={() => setCurrentView('home')}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
+    );
+  }
+
   // 顯示主頁面
   if (currentView === 'home') {
     // 統計數據從 novels 列表彙總
@@ -607,13 +773,7 @@ const App: React.FC = () => {
       <>
         <HomePage
           novels={novels}
-          onCreateNovel={async () => {
-            const newId = await createNovel('未命名小說');
-            if (newId) {
-              await switchNovel(newId);
-              setCurrentView('editor');
-            }
-          }}
+          onCreateNovel={() => setIsSetupWizardOpen(true)}
           onOpenNovel={async (novelId) => {
             await switchNovel(novelId);
             setCurrentView('editor');
@@ -623,6 +783,8 @@ const App: React.FC = () => {
           userName={session?.user?.user_metadata?.display_name || session?.user?.email?.split('@')[0] || 'Writer'}
           userRole={userRole}
           userEmail={session?.user?.email || ''}
+          userId={session?.user?.id || ''}
+          accessToken={session?.access_token || ''}
           stats={{
             totalWords,
             totalChapters,
@@ -633,6 +795,29 @@ const App: React.FC = () => {
           toggleTheme={toggleTheme}
           onLogout={() => supabase.auth.signOut()}
           onOpenUserSettings={() => setIsUserSettingsOpen(true)}
+          onOpenAdmin={() => setCurrentView('admin')}
+          onOpenChat={() => setCurrentView('chat')}
+        />
+
+        {/* Novel Setup Wizard */}
+        <NovelSetupWizard
+          isOpen={isSetupWizardOpen}
+          onClose={() => setIsSetupWizardOpen(false)}
+          onComplete={async (wizardSettings) => {
+            try {
+              const newId = await createNovel(wizardSettings.title || '未命名小說', wizardSettings);
+              if (newId) {
+                await switchNovel(newId);
+                setCurrentView('editor');
+                setIsSetupWizardOpen(false);
+              } else {
+                throw new Error('創建小說失敗，請檢查網路連線或重試');
+              }
+            } catch (err: any) {
+              console.error('[App] createNovel failed:', err);
+              throw err;
+            }
+          }}
         />
 
         {/* User Settings Modal */}
@@ -712,9 +897,12 @@ const App: React.FC = () => {
           });
         }}
         userEmail={session?.user?.email}
+        userName={session?.user?.user_metadata?.display_name || session?.user?.email?.split('@')[0] || 'Writer'}
         userRole={userRole}
+        userId={session?.user?.id || ''}
+        accessToken={session?.access_token || ''}
         onLogout={() => supabase.auth.signOut()}
-        onOpenWorldview={() => setIsWorldviewOpen(true)}
+        onOpenBackground={() => setIsBackgroundOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenUserSettings={() => setIsUserSettingsOpen(true)}
         onBackToHome={() => setCurrentView('home')}
@@ -795,13 +983,96 @@ const App: React.FC = () => {
         settings={settings}
       />
 
-      {/* Worldview Modal */}
-      <WorldviewModal
-        isOpen={isWorldviewOpen}
-        onClose={() => setIsWorldviewOpen(false)}
+
+      {/* AI味檢測 Modal */}
+      {isAiTasteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[85vh] overflow-hidden border border-emerald-100 dark:border-emerald-900/50">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600 dark:text-emerald-400"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></svg>
+                </div>
+                <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100">AI味檢測</h3>
+                {aiTasteResult && (
+                  <span className={`ml-2 px-3 py-1 rounded-full text-sm font-bold ${
+                    aiTasteResult.score <= 30 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    aiTasteResult.score <= 60 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  }`}>{aiTasteResult.score} 分</span>
+                )}
+              </div>
+              <button onClick={() => { setIsAiTasteModalOpen(false); setAiTasteResult(null); }} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1.5 rounded-full transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 p-6 overflow-y-auto bg-slate-50/50 dark:bg-gray-900">
+              {aiTasteLoading ? (
+                <div className="h-48 flex flex-col items-center justify-center text-gray-500 gap-3">
+                  <div className="animate-spin rounded-full h-8 w-8 border-4 border-emerald-200 border-t-emerald-600"></div>
+                  <p className="text-sm font-medium animate-pulse">正在檢測AI味...</p>
+                </div>
+              ) : aiTasteResult ? (
+                <div className="space-y-4">
+                  {/* Summary */}
+                  <div className={`p-4 rounded-xl border ${
+                    aiTasteResult.score <= 30 ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800' :
+                    aiTasteResult.score <= 60 ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/10 dark:border-yellow-800' :
+                    'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800'
+                  }`}>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{aiTasteResult.summary}</p>
+                  </div>
+
+                  {/* Issues */}
+                  {aiTasteResult.issues.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">檢測到 {aiTasteResult.issues.length} 個問題：</p>
+                      {aiTasteResult.issues.map((issue, i) => (
+                        <div key={i} className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 space-y-1.5">
+                          <p className="text-sm text-red-600 dark:text-red-400 font-medium">「{issue.text}」</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{issue.reason}</p>
+                          <p className="text-xs text-emerald-600 dark:text-emerald-400">→ {issue.fix}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            {aiTasteResult && (
+              <div className="px-6 py-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                <button
+                  onClick={() => { setIsAiTasteModalOpen(false); setAiTasteResult(null); }}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+                >關閉</button>
+                <button
+                  onClick={handleAiTasteRewrite}
+                  disabled={aiTasteRewriting}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center gap-2 text-sm disabled:opacity-50"
+                >
+                  {aiTasteRewriting ? (
+                    <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>改寫中...</>
+                  ) : (
+                    <>✨ 一鍵去AI味</>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Background Modal */}
+      <BackgroundModal
+        isOpen={isBackgroundOpen}
+        onClose={() => setIsBackgroundOpen(false)}
         settings={settings}
         onUpdateSettings={updateSettings}
-        onGenerateWorldview={generateWorldview}
       />
 
       <NovelSettingsModal
@@ -829,6 +1100,70 @@ const App: React.FC = () => {
         message={confirmModal.message}
         isDestructive={confirmModal.isDestructive}
       />
+
+      {/* 記憶提取確認彈窗 */}
+      {memoryConfirmData && (
+        <MemoryConfirmModal
+          isOpen={memoryConfirmOpen}
+          extracted={memoryConfirmData}
+          chapterIndex={memoryConfirmChapterIndex}
+          isSaving={memoryConfirmSaving}
+          onConfirm={async (edited) => {
+            console.log("[MemoryConfirm] onConfirm called, novelId:", novelId, "chapterId:", memoryConfirmChapterId);
+            if (!novelId) {
+              console.error("[MemoryConfirm] novelId is null, aborting save");
+              alert("無法儲存：novelId 為空");
+              return;
+            }
+            setMemoryConfirmSaving(true);
+            try {
+              console.log("[MemoryConfirm] Calling saveConfirmedMemory...");
+              await saveConfirmedMemory({
+                novelId,
+                chapterId: memoryConfirmChapterId,
+                chapterIndex: memoryConfirmChapterIndex,
+                extracted: edited
+              });
+              console.log("[MemoryConfirm] Save success, updating character cards...");
+              // 更新前端角色卡（找不到則自動建立）
+              if (edited.character_snapshots) {
+                for (const snap of edited.character_snapshots) {
+                  const char = characters.find(c => c.name === snap.name);
+                  const dynamicFields = {
+                    currentLocation: snap.location || undefined,
+                    currentPowerLevel: snap.power_level || undefined,
+                    currentEmotionalState: snap.emotional_state || undefined,
+                    currentInjuries: snap.injuries || undefined,
+                    currentPossessions: snap.possessions || undefined,
+                    statusUpdatedAtChapter: memoryConfirmChapterIndex,
+                  };
+                  if (char) {
+                    updateCharacter(char.id, dynamicFields);
+                  } else {
+                    await addCharacter({
+                      name: snap.name,
+                      role: snap.role || '配角',
+                      level: snap.power_level || '',
+                      ...dynamicFields,
+                    });
+                  }
+                }
+              }
+            } catch (e: any) {
+              console.error("儲存記憶失敗:", e.message);
+              alert("儲存記憶失敗: " + e.message);
+            } finally {
+              setMemoryConfirmSaving(false);
+              setMemoryConfirmOpen(false);
+              setMemoryConfirmData(null);
+            }
+          }}
+          onSkip={() => {
+            setMemoryConfirmOpen(false);
+            setMemoryConfirmData(null);
+          }}
+        />
+      )}
     </div>
   );
 };

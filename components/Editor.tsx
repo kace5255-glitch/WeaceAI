@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
     Wand2, List, Scissors, CheckCircle, Ghost,
-    Expand, Feather, FileText, Presentation, Undo, Redo, MessageSquarePlus
+    Expand, Feather, FileText, Presentation, Undo, Redo, MessageSquarePlus, FlaskConical
 } from 'lucide-react';
 import { Chapter, EditorActionType } from '../types';
 
@@ -215,6 +215,7 @@ export const Editor: React.FC<EditorProps> = ({ chapter, onUpdate, onAiAction })
                             <ToolbarButton onClick={() => onAiAction('humanize')} icon={<Ghost size={14} />} label="潤飾" colorClass="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" />
                             */}
                             <ToolbarButton onClick={() => onAiAction('critique')} icon={<MessageSquarePlus size={14} />} label="點評" colorClass="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" />
+                            <ToolbarButton onClick={() => onAiAction('ai-taste')} icon={<FlaskConical size={14} />} label="AI味" colorClass="text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" />
                         </div>
 
                         {/* Briefing */}

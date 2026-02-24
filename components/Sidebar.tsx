@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
-import { BookOpen, FileText, Plus, Settings, History, Download, LayoutTemplate, FolderPlus, ChevronRight, ChevronDown, Edit2, LogOut, User, Trash2, ArrowUpDown, Search, Moon, Sun, Globe, Home } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { BookOpen, FileText, Plus, Settings, History, Download, LayoutTemplate, FolderPlus, ChevronRight, ChevronDown, Edit2, LogOut, User, Trash2, ArrowUpDown, Search, Moon, Sun, Home, BookMarked } from 'lucide-react';
 import { Volume, Memo } from '../types';
 import MemoPad from './MemoPad';
-
+import { UserProfilePanel } from './UserProfilePanel';
 import { ExportChapterModal } from './ExportChapterModal';
 
 interface SidebarProps {
@@ -16,11 +16,14 @@ interface SidebarProps {
   onDeleteVolume?: (id: string) => void;
   onDeleteChapter: (id: string) => void;
   userEmail?: string;
+  userName?: string;
   userRole?: string;
+  userId?: string;
+  accessToken?: string;
   onLogout?: () => void;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
-  onOpenWorldview?: () => void;
+  onOpenBackground?: () => void;
   onOpenSettings?: () => void;
   onOpenUserSettings?: () => void;
   onBackToHome?: () => void;
@@ -42,11 +45,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteVolume,
   onDeleteChapter,
   userEmail,
+  userName,
   userRole,
+  userId = '',
+  accessToken = '',
   onLogout,
   theme,
   toggleTheme,
-  onOpenWorldview,
+  onOpenBackground,
   onOpenSettings,
   onOpenUserSettings,
   onBackToHome,
@@ -58,6 +64,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isMemoOpen, setIsMemoOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileAnchorRef = useRef<HTMLButtonElement>(null);
 
   // Track expanded volumes. Default all expanded.
   const [expandedVolumes, setExpandedVolumes] = useState<Record<string, boolean>>(
@@ -306,7 +314,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           功能選項
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <ToolButton icon={<Globe size={16} />} label="世界觀" onClick={onOpenWorldview} highlight />
+          <ToolButton icon={<BookMarked size={16} />} label="全局背景" onClick={onOpenBackground} highlight />
           <ToolButton icon={<Download size={16} />} label="導出" onClick={() => setIsExportModalOpen(true)} />
           <ToolButton icon={<History size={16} />} label="歷史" />
           <ToolButton icon={<LayoutTemplate size={16} />} label="備註" onClick={() => setIsMemoOpen(true)} highlight={isMemoOpen} />
@@ -315,39 +323,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-        <div className="flex items-center gap-3">
+        <button ref={profileAnchorRef} onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-3 w-full hover:bg-gray-100 dark:hover:bg-gray-700/50 rounded-lg p-1 transition-colors">
           <div className="w-8 h-8 rounded-full bg-purple-200 dark:bg-purple-900/50 flex items-center justify-center text-purple-700 dark:text-purple-300 font-bold shrink-0">
-            {userEmail ? userEmail.charAt(0).toUpperCase() : <User size={16} />}
+            {(userName || userEmail || '?').charAt(0).toUpperCase()}
           </div>
           <div className="flex flex-col flex-1 min-w-0">
-            <span className="font-medium text-gray-800 dark:text-gray-200 text-xs truncate" title={userEmail}>
-              {userEmail || 'Guest'}
+            <span className="font-medium text-gray-800 dark:text-gray-200 text-xs truncate">
+              {userName || userEmail || 'Guest'}
             </span>
-            <span className={`text-[10px] ${userRole === 'admin' ? 'text-purple-600 dark:text-purple-400 font-bold' : userRole === 'pro' ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-500 dark:text-gray-400'}`}>
-              {userRole === 'admin' ? 'Admin' : userRole === 'pro' ? 'Pro Plan' : 'Free Plan'}
+            <span className={`text-[10px] ${userRole === 'admin' ? 'text-purple-600 dark:text-purple-400 font-bold' : 'text-gray-500 dark:text-gray-400'}`}>
+              {userRole === 'admin' ? 'Admin' : 'Free Plan'}
             </span>
           </div>
-          <div className="flex items-center gap-1">
-            {onOpenUserSettings && (
-              <button
-                onClick={onOpenUserSettings}
-                className="p-1.5 text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-md transition-colors"
-                title="用戶設定"
-              >
-                <Settings size={14} />
-              </button>
-            )}
-            {onLogout && (
-              <button
-                onClick={onLogout}
-                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-                title="登出"
-              >
-                <LogOut size={14} />
-              </button>
-            )}
-          </div>
-        </div>
+        </button>
+        <UserProfilePanel
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          userName={userName || userEmail?.split('@')[0] || 'Guest'}
+          userEmail={userEmail || ''}
+          userRole={userRole || 'user'}
+          userId={userId}
+          accessToken={accessToken}
+          onLogout={onLogout || (() => {})}
+          onOpenUserSettings={onOpenUserSettings || (() => {})}
+          anchorRef={profileAnchorRef}
+          position="above"
+        />
       </div>
 
       {/* Export Modal */}

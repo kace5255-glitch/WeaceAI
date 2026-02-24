@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Sparkles, Mail, Lock, Loader2, PlayCircle, User, Calendar, UserCircle } from 'lucide-react';
+import { Sparkles, Mail, Lock, Loader2, PlayCircle, User, Calendar, UserCircle, Gift } from 'lucide-react';
 
 export const AuthPage: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -10,6 +10,7 @@ export const AuthPage: React.FC = () => {
     const [displayName, setDisplayName] = useState('');
     const [birthday, setBirthday] = useState('');
     const [gender, setGender] = useState('');
+    const [inviteCode, setInviteCode] = useState('');
     const [loginIdentifier, setLoginIdentifier] = useState(''); // 用於登入的帳號或郵箱
     const [loading, setLoading] = useState(false);
     const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -68,6 +69,22 @@ export const AuthPage: React.FC = () => {
 
                     if (profileError) {
                         console.error('創建用戶資料失敗:', profileError);
+                    }
+
+                    // 如果填了邀請碼，註冊後自動兌換
+                    if (inviteCode.trim() && authData.session?.access_token) {
+                        try {
+                            await fetch('/api/user/redeem-invite', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${authData.session.access_token}`,
+                                },
+                                body: JSON.stringify({ code: inviteCode.trim() }),
+                            });
+                        } catch {
+                            // 邀請碼兌換失敗不影響註冊
+                        }
                     }
                 }
 
@@ -254,6 +271,21 @@ export const AuthPage: React.FC = () => {
                                         <option value="other">其他</option>
                                         <option value="prefer_not_to_say">不願透露</option>
                                     </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1.5 ml-1">邀請碼</label>
+                                    <div className="relative">
+                                        <Gift className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input
+                                            type="text"
+                                            value={inviteCode}
+                                            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                                            className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-violet-500 focus:ring-4 focus:ring-violet-500/10 outline-none transition-all text-sm font-medium text-slate-700"
+                                            placeholder="有邀請碼？填入可獲得點數（可選）"
+                                            maxLength={10}
+                                        />
+                                    </div>
                                 </div>
                             </>
                         )}
